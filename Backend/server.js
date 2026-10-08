@@ -16,9 +16,7 @@ const PORT = process.env.PORT || 5000;
 app.get("/api/health", (req, res) => {
   res.json({ message: "Car Rental API is running" });
 });
-// TODO: Attach route modules when implemented in src/routes
-// app.use("/api/users", userRoutes);
-// app.use("/api/orders", orderRoutes);
+
 
 // Database connection
 const startServer = async () => {
