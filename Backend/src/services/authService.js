@@ -6,7 +6,7 @@ const { sendMail, generateOtp } = require("../utils/sendMail");
 const generateToken = (user) => {
   return jwt.sign(
     {
-      id: user.userId || user.id,
+      userId: user.userId,
       email: user.email,
       role: user.role,
     },

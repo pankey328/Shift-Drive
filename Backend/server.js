@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const sequelize = require("./src/dbconfig/db");
 const authRoutes = require("./src/routes/authRoutes");
+const walletRoutes = require("./src/routes/walletRoutes");
 
 const app = express();
 
@@ -13,8 +14,9 @@ app.use(express.urlencoded({ extended: true }));
 
 const PORT = process.env.PORT || 5000;
 
-// Auth Routes
+// Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/wallet", walletRoutes);
 
 // Database connection & Server start
 const startServer = async () => {
