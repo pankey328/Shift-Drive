@@ -6,8 +6,10 @@ const {
   addVehicle,
   getVehicles,
   uploadGallery,
+  searchVehicles,
 } = require("../controllers/vehicleController");
 
+router.get("/hub/:hubId/search", searchVehicles);
 router.get("/hub/:hubId", getVehicles);
 
 router.use(protect);

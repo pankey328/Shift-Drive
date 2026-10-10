@@ -11,6 +11,10 @@ const Vehicle = sequelize.define(
     },
     make: { type: DataTypes.STRING(50), allowNull: false },
     model: { type: DataTypes.STRING(50), allowNull: false },
+    vehicle_class: {
+      type: DataTypes.ENUM("HATCHBACK", "SEDAN", "SUV", "LUXURY"),
+      allowNull: false,
+    },
     plate_number: {
       type: DataTypes.STRING(30),
       allowNull: false,

@@ -6,6 +6,9 @@ const authRoutes = require("./src/routes/authRoutes");
 const walletRoutes = require("./src/routes/walletRoutes");
 const hubRoutes = require("./src/routes/hubRoutes");
 const vehicleRoutes = require("./src/routes/vehicleRoutes");
+const bookingRoutes = require("./src/routes/bookingRoutes");
+const startBookingCron = require("./src/cron/ghostBookingCron");
+const startLateReturnCron = require("./src/cron/lateReturnCron");
 
 const app = express();
 
@@ -21,6 +24,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/hubs", hubRoutes);
 app.use("/api/vehicles", vehicleRoutes);
+app.use("/api/bookings", bookingRoutes);
 
 // Database connection & Server start
 const startServer = async () => {
@@ -28,8 +32,14 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log("Database connected successfully");
 
-    await sequelize.sync();
+    await sequelize.sync({ alter: true });
     console.log("Database synchronized successfully");
+
+    startBookingCron();
+    console.log("Booking Cron jobs initialized");
+
+    startLateReturnCron();
+    console.log("Late Return Cron jobs initialized");
 
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

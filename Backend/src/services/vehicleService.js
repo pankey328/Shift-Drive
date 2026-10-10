@@ -2,6 +2,7 @@ const {
   createVehicle,
   getVehiclesByHub,
   updateVehicleGallery,
+  getAvailableVehicles,
 } = require("../repositories/vehicleRepository");
 const { uploadImage } = require("../utils/cloudinary");
 
@@ -39,8 +40,20 @@ const uploadGalleryImages = async (vehicleId, files) => {
   return await updateVehicleGallery(vehicleId, uploadedUrls);
 };
 
+const searchAvailableFleet = async (hubId, startTime, endTime) => {
+  if (!startTime || !endTime) {
+    const error = new Error(
+      "Start and End times are required to check availability",
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+  return await getAvailableVehicles(hubId, startTime, endTime);
+};
+
 module.exports = {
   addNewVehicle,
   getHubFleet,
   uploadGalleryImages,
+  searchAvailableFleet,
 };

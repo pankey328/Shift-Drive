@@ -68,8 +68,22 @@ const uploadGallery = async (req, res) => {
   }
 };
 
+const searchVehicles = async (req, res) => {
+  try {
+    const { hubId } = req.params;
+    const { startTime, endTime } = req.query;
+
+    const vehicles = await vehicleService.searchAvailableFleet(hubId, startTime, endTime);
+    return res.status(200).json({ success: true, data: vehicles });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   addVehicle,
   getVehicles,
   uploadGallery,
+  searchVehicles,
 };
