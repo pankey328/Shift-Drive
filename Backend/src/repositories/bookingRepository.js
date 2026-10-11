@@ -33,7 +33,7 @@ const findBusyVehicleIds = async (paddedStart, paddedEnd) => {
     raw: true,
   });
 
-  return busyBookings.map((b) => b.vehicle_id);
+  return busyBookings.map((b) => b.vehicle_id).filter(Boolean);
 };
 
 // Create a new booking record

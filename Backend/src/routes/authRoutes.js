@@ -10,8 +10,9 @@ const {
   verifyForget,
   reset,
   getMe,
+  registerHubManager,
 } = require("../controllers/authController");
-const { protect } = require("../middleware/authMiddleware");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
 const otpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -27,5 +28,6 @@ router.post("/forget", otpLimiter, forget);
 router.post("/verify-forget", verifyForget);
 router.post("/reset", reset);
 router.get("/me", protect, getMe);
+router.post("/register-manager", protect, authorize("SUPERADMIN"), registerHubManager);
 
 module.exports = router;

@@ -130,7 +130,26 @@ const confirmBookingPayment = async (userId, bookingId) => {
   return await updateBookingStatus(bookingId, "CONFIRMED");
 };
 
+const reportAccident = async (bookingId) => {
+  const booking = await Booking.findByPk(bookingId);
+  
+  if (!booking || booking.status !== 'ACTIVE_TRIP') {
+    throw new Error("Only active trips can be marked as an emergency.");
+  }
+
+  // Pause the clock to stop Late Fees
+  booking.status = 'EMERGENCY_HOLD';
+  await booking.save();
+
+  // Immediately trigger the Maintenance Escalation 
+  const { handleMaintenanceEscalation } = require('./escalationService');
+  await handleMaintenanceEscalation(booking.vehicle_id);
+
+  return { message: "Emergency reported. Late fees paused and future bookings rescued." };
+};
+
 module.exports = {
   initiateBooking,
   confirmBookingPayment,
+  reportAccident,
 };

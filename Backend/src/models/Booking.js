@@ -21,6 +21,7 @@ const Booking = sequelize.define(
         "COMPLETED",
         "CANCELLED",
         "EXPIRED",
+        "EMERGENCY_HOLD",
       ),
       defaultValue: "PENDING_PAYMENT",
     },

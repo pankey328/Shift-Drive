@@ -30,6 +30,8 @@ Booking.belongsTo(Hub, { foreignKey: "dropoff_hub_id", as: "DropoffHub" });
 // Inspections
 Booking.hasMany(Inspection, { foreignKey: "booking_id", as: "Inspections" });
 Inspection.belongsTo(Booking, { foreignKey: "booking_id" });
+User.hasMany(Inspection, { foreignKey: "admin_id", as: "AdminInspections" });
+Inspection.belongsTo(User, { foreignKey: "admin_id", as: "Inspector" });
 
 // Financial Ledger
 User.hasMany(WalletTransaction, { foreignKey: "user_id", as: "WalletLedger" });

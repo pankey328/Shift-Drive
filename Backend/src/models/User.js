@@ -11,6 +11,7 @@ const User = sequelize.define(
     },
     name: { type: DataTypes.STRING(100), allowNull: false },
     email: { type: DataTypes.STRING(150), allowNull: false, unique: true },
+    phone: { type: DataTypes.STRING(20), allowNull: true },
     password: { type: DataTypes.STRING(255), allowNull: true },
     role: {
       type: DataTypes.ENUM("CUSTOMER", "HUB_ADMIN", "SUPERADMIN"),
@@ -26,6 +27,10 @@ const User = sequelize.define(
       type: DataTypes.ENUM("PENDING", "VERIFIED", "REJECTED"),
       defaultValue: "PENDING",
     },
+    requires_password_change: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
     kyc_document_url: { type: DataTypes.STRING(500), allowNull: true },
     isVerified: { type: DataTypes.BOOLEAN, defaultValue: false },
     otp: { type: DataTypes.STRING(255), allowNull: true },
@@ -38,7 +43,7 @@ const User = sequelize.define(
     tableName: "users",
     timestamps: true,
     paranoid: true,
-  },
+  }
 );
 
 module.exports = User;
