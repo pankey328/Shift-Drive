@@ -16,6 +16,10 @@ const Hub = sequelize.define(
     longitude: { type: DataTypes.DECIMAL(11, 8), allowNull: false },
     opening_time: { type: DataTypes.TIME, allowNull: false },
     closing_time: { type: DataTypes.TIME, allowNull: false },
+    status: {
+      type: DataTypes.ENUM("ACTIVE", "INACTIVE", "UNDER_MAINTENANCE"),
+      defaultValue: "ACTIVE",
+    },
   },
   {
     tableName: "hubs",

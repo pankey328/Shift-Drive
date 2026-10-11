@@ -1,9 +1,18 @@
-const { createInspectionRecord, getInspectionsByBooking } = require("../repositories/inspectionRepository");
-const { updateBookingStatus } = require("../repositories/bookingRepository");
+const {
+  createInspectionRecord,
+  getInspectionsByBooking,
+  findInspectionsByManager,
+  findAllInspections,
+} = require("../repositories/inspectionRepository");
+const {
+  findBookingById,
+  updateBookingStatus,
+} = require("../repositories/bookingRepository");
 const { processFinancialMovement } = require("../repositories/walletRepository");
-const { handleMaintenanceEscalation } = require('./escalationService'); 
+const vehicleRepository = require("../repositories/vehicleRepository");
+const userRepository = require("../repositories/userRepository");
+const { handleMaintenanceEscalation } = require("./escalationService");
 const { uploadImage } = require("../utils/cloudinary");
-const { Booking, Vehicle } = require("../models");
 
 const DAMAGE_TIERS = {
   MINOR: { amount: 1000, description: "Minor scratches or scuffs" },
@@ -17,14 +26,24 @@ const DAMAGE_TIERS = {
   },
 };
 
+const DAMAGE_FINES = {
+  MINOR: 1000,
+  MAJOR: 5000,
+  CRITICAL: 15000,
+};
+
 const submitInspection = async (
   bookingId,
   adminId,
   { type, notes, damage_flagged, damage_severity, requires_maintenance },
   files,
 ) => {
-  const booking = await Booking.findByPk(bookingId);
-  if (!booking) throw new Error("Booking not found");
+  const booking = await findBookingById(bookingId);
+  if (!booking) {
+    const error = new Error("Booking not found");
+    error.statusCode = 404;
+    throw error;
+  }
 
   let photoUrls = [];
   if (files && files.length > 0) {
@@ -43,7 +62,7 @@ const submitInspection = async (
     photo_urls: photoUrls,
     notes,
     damage_flagged: isDamaged,
-    damage_severity: isDamaged ? damage_severity : null, 
+    damage_severity: isDamaged ? damage_severity : null,
   });
 
   if (type === "PRE_TRIP") {
@@ -55,8 +74,6 @@ const submitInspection = async (
       const tier = DAMAGE_TIERS[damage_severity.toUpperCase()];
 
       if (!tier) throw new Error("Invalid damage severity tier provided.");
-
-      console.log(`${damage_severity} damage flagged on Booking ${bookingId}.`);
 
       // Charge the specific tiered penalty
       await processFinancialMovement({
@@ -70,15 +87,12 @@ const submitInspection = async (
 
     // Only take the car offline if the Admin explicitly marked it
     if (needsMaintenance) {
-      const vehicle = await Vehicle.findByPk(booking.vehicle_id);
+      const vehicle = await vehicleRepository.findVehicleById(booking.vehicle_id);
       if (vehicle) {
-        vehicle.status = "MAINTENANCE";
-        await vehicle.save();
-        const vId = vehicle.vehicleId || vehicle.id;
-        console.log(`Vehicle ${vId} placed into MAINTENANCE mode.`);
+        await vehicleRepository.updateVehicleStatus(vehicle.vehicleId, "MAINTENANCE");
 
-        // Trigger the background escalation to swap User's to a new car
-        await handleMaintenanceEscalation(vId);
+        // Trigger the background escalation to swap user to a new car
+        await handleMaintenanceEscalation(vehicle.vehicleId);
       }
     }
   }
@@ -90,4 +104,116 @@ const getBookingInspections = async (bookingId) => {
   return await getInspectionsByBooking(bookingId);
 };
 
-module.exports = { submitInspection, getBookingInspections };
+const fetchManagerInspections = async (managerId) => {
+  const manager = await userRepository.findUserById(managerId);
+  if (!manager) {
+    const error = new Error("Manager not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const inspections = await findInspectionsByManager(managerId);
+
+  let totalFines = 0;
+  const formattedData = inspections.map((insp) => {
+    const fine =
+      insp.damage_flagged && insp.damage_severity
+        ? DAMAGE_FINES[insp.damage_severity] || 0
+        : 0;
+    totalFines += fine;
+
+    return {
+      inspectionId: insp.inspectionId,
+      type: insp.type,
+      photo_urls: insp.photo_urls,
+      notes: insp.notes,
+      damage_flagged: insp.damage_flagged,
+      damage_severity: insp.damage_severity,
+      penalty_fined: fine,
+      createdAt: insp.createdAt,
+      booking: insp.Booking
+        ? {
+            bookingId: insp.Booking.bookingId,
+            user_id: insp.Booking.user_id,
+            start_time: insp.Booking.start_time,
+            end_time: insp.Booking.end_time,
+            status: insp.Booking.status,
+            vehicle: insp.Booking.Vehicle,
+          }
+        : null,
+    };
+  });
+
+  return {
+    manager,
+    summary: {
+      total_inspections: inspections.length,
+      damages_flagged: inspections.filter((i) => i.damage_flagged).length,
+      total_penalties_fined: totalFines,
+    },
+    data: formattedData,
+  };
+};
+
+const fetchAllInspections = async ({ damageOnly, severity }) => {
+  const whereClause = {};
+  if (damageOnly === "true") whereClause.damage_flagged = true;
+  if (severity) whereClause.damage_severity = severity.toUpperCase();
+
+  const inspections = await findAllInspections(whereClause);
+
+  let totalFines = 0;
+  const formattedData = inspections.map((insp) => {
+    const fine =
+      insp.damage_flagged && insp.damage_severity
+        ? DAMAGE_FINES[insp.damage_severity] || 0
+        : 0;
+    totalFines += fine;
+
+    return {
+      inspectionId: insp.inspectionId,
+      type: insp.type,
+      inspector: insp.Inspector
+        ? {
+            userId: insp.Inspector.userId,
+            name: insp.Inspector.name,
+            email: insp.Inspector.email,
+            phone: insp.Inspector.phone,
+          }
+        : null,
+      photo_urls: insp.photo_urls,
+      notes: insp.notes,
+      damage_flagged: insp.damage_flagged,
+      damage_severity: insp.damage_severity,
+      penalty_fined: fine,
+      createdAt: insp.createdAt,
+      booking: insp.Booking
+        ? {
+            bookingId: insp.Booking.bookingId,
+            user_id: insp.Booking.user_id,
+            start_time: insp.Booking.start_time,
+            end_time: insp.Booking.end_time,
+            status: insp.Booking.status,
+            vehicle: insp.Booking.Vehicle,
+          }
+        : null,
+    };
+  });
+
+  return {
+    summary: {
+      total_inspections: inspections.length,
+      damages_flagged: inspections.filter((i) => i.damage_flagged).length,
+      total_penalties_fined: totalFines,
+    },
+    data: formattedData,
+  };
+};
+
+module.exports = {
+  submitInspection,
+  getBookingInspections,
+  fetchManagerInspections,
+  fetchAllInspections,
+};
+

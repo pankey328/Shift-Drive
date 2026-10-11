@@ -26,6 +26,8 @@ const Booking = sequelize.define(
       defaultValue: "PENDING_PAYMENT",
     },
     locked_until: { type: DataTypes.DATE, allowNull: true },
+    incident_notes: { type: DataTypes.TEXT, allowNull: true },
+    cancellation_reason: { type: DataTypes.STRING, allowNull: true },
   },
   {
     tableName: "bookings",

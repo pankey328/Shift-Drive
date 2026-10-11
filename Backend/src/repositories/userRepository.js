@@ -82,6 +82,77 @@ const updateUserPassword = async (user, hashedPassword) => {
   return user;
 };
 
+// Fetch users by KYC status
+const getUsersByKycStatus = async (kycStatus) => {
+  return await User.findAll({
+    where: { kyc_status: kycStatus },
+    attributes: { exclude: ["password", "otp", "otpExpiry"] },
+    order: [["createdAt", "ASC"]],
+  });
+};
+
+// Update user's KYC verification status
+const updateUserKyc = async (userId, { kyc_status, kyc_rejection_reason = null }) => {
+  const user = await User.findByPk(userId);
+  if (!user) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  user.kyc_status = kyc_status;
+  user.kyc_rejection_reason = kyc_rejection_reason;
+  await user.save();
+  return user;
+};
+
+// Toggle user account activation (block/unblock)
+const updateUserAccountStatus = async (userId, is_active) => {
+  const user = await User.findByPk(userId);
+  if (!user) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  user.is_active = is_active;
+  await user.save();
+  return user;
+};
+
+// List all users with optional filters
+const getAllUsersList = async (filters = {}) => {
+  const where = {};
+  if (filters.role) where.role = filters.role;
+  if (filters.is_active !== undefined) where.is_active = filters.is_active;
+  if (filters.kyc_status) where.kyc_status = filters.kyc_status;
+
+  return await User.findAll({
+    where,
+    attributes: { exclude: ["password", "otp", "otpExpiry"] },
+    order: [["createdAt", "DESC"]],
+  });
+};
+
+// Register hub manager user
+const createHubManager = async (managerData) => {
+  return await User.create(managerData);
+};
+
+// Update permanent password and remove temporary password flag
+const updatePermanentPassword = async (userId, hashedPassword) => {
+  const user = await User.findByPk(userId);
+  if (!user) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  user.password = hashedPassword;
+  user.requires_password_change = false;
+  await user.save();
+  return user;
+};
+
 module.exports = {
   findUserByEmail,
   findUserById,
@@ -91,4 +162,11 @@ module.exports = {
   markUserAsVerified,
   updateUserOtp,
   updateUserPassword,
+  getUsersByKycStatus,
+  updateUserKyc,
+  updateUserAccountStatus,
+  getAllUsersList,
+  createHubManager,
+  updatePermanentPassword,
 };
+

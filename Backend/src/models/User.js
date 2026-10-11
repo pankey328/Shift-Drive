@@ -27,6 +27,11 @@ const User = sequelize.define(
       type: DataTypes.ENUM("PENDING", "VERIFIED", "REJECTED"),
       defaultValue: "PENDING",
     },
+    kyc_rejection_reason: { type: DataTypes.STRING(255), allowNull: true },
+    is_active: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
     requires_password_change: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,

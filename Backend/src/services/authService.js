@@ -1,6 +1,8 @@
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const userRepository = require("../repositories/userRepository");
+const hubRepository = require("../repositories/hubRepository");
 const { sendMail, generateOtp } = require("../utils/sendMail");
 
 const generateToken = (user) => {
@@ -47,6 +49,21 @@ const loginUser = async ({ email, password }) => {
   }
 
   const token = generateToken(userExist);
+
+  if (userExist.requires_password_change) {
+    return {
+      success: true,
+      requires_password_change: true,
+      message: "Please set a permanent password to continue.",
+      token, 
+      user: {
+        id: userExist.userId,
+        name: userExist.name,
+        email: userExist.email,
+        role: userExist.role,
+      },
+    };
+  }
 
   return {
     message: "Login Successfull",
@@ -475,6 +492,86 @@ const getUserProfile = async (userId) => {
   return user;
 };
 
+const registerHubManager = async ({ name, email, phone, hub_id }) => {
+  const hub = await hubRepository.findHubById(hub_id);
+  if (!hub) {
+    const error = new Error("Hub not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const existing = await userRepository.findUserByEmail(email);
+  if (existing) {
+    const error = new Error("A user with this email already exists.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const tempPassword = crypto.randomBytes(4).toString("hex");
+  const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+  const manager = await userRepository.createHubManager({
+    name,
+    email,
+    phone,
+    password: hashedPassword,
+    role: "HUB_ADMIN",
+    requires_password_change: true,
+  });
+
+  await hubRepository.assignManagerToHub(hub.hubId, manager.userId);
+
+  const emailBody = `
+    <p>Hello ${name},</p>
+    <p>You have been appointed as the Hub Manager for <strong>${hub.name}</strong>.</p>
+    <p>Your temporary login password is: <strong>${tempPassword}</strong></p>
+    <p>Please log in to your dashboard. You will be required to set a permanent password immediately.</p>
+  `;
+
+  try {
+    await sendMail(email, "Welcome to ShiftDrive - Account Setup", emailBody);
+  } catch (err) {
+    console.error("Failed to send welcome email:", err.message);
+  }
+
+  return {
+    manager: {
+      userId: manager.userId,
+      name: manager.name,
+      email: manager.email,
+      phone: manager.phone,
+    },
+    hubName: hub.name,
+    tempPassword,
+  };
+};
+
+const setupPermanentPassword = async (userId, newPassword) => {
+  if (!newPassword || newPassword.length < 8) {
+    const error = new Error("Password must be at least 8 characters long.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const user = await userRepository.findUserById(userId);
+  if (!user) {
+    const error = new Error("User not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!user.requires_password_change) {
+    const error = new Error("Account is already set up.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  await userRepository.updatePermanentPassword(userId, hashedPassword);
+
+  return { message: "Password updated successfully. Welcome to ShiftDrive!" };
+};
+
 module.exports = {
   loginUser,
   googleLogin,
@@ -484,4 +581,7 @@ module.exports = {
   verifyForgetPassword,
   resetPassword,
   getUserProfile,
+  registerHubManager,
+  setupPermanentPassword,
 };
+

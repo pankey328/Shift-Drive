@@ -10,6 +10,7 @@ const {
   verifyForget,
   reset,
   getMe,
+  setupPermanentPassword,
   registerHubManager,
 } = require("../controllers/authController");
 const { protect, authorize } = require("../middleware/authMiddleware");
@@ -17,7 +18,10 @@ const { protect, authorize } = require("../middleware/authMiddleware");
 const otpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  message: { message: "Too many requests from this IP, please try again after 15 minutes" }
+  message: {
+    message:
+      "Too many requests from this IP, please try again after 15 minutes",
+  },
 });
 
 router.post("/login", login);
@@ -28,6 +32,12 @@ router.post("/forget", otpLimiter, forget);
 router.post("/verify-forget", verifyForget);
 router.post("/reset", reset);
 router.get("/me", protect, getMe);
-router.post("/register-manager", protect, authorize("SUPERADMIN"), registerHubManager);
+router.post("/setup-password", protect, setupPermanentPassword);
+router.post(
+  "/register-manager",
+  protect,
+  authorize("SUPERADMIN"),
+  registerHubManager,
+);
 
 module.exports = router;

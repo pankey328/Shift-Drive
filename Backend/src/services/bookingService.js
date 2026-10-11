@@ -1,23 +1,28 @@
-const { Op } = require("sequelize");
 const {
   findBusyVehicleIds,
   createBookingRecord,
   findBookingById,
+  findBookingByIdWithDetails,
   updateBookingStatus,
+  getEmergencyBookingsQueue,
+  resolveEmergencyRecord,
+  forceCancelBookingRecord,
+  getAllBookingsAdmin,
 } = require("../repositories/bookingRepository");
 const {
   processFinancialMovement,
 } = require("../repositories/walletRepository");
-const { Vehicle, User } = require("../models");
+const vehicleRepository = require("../repositories/vehicleRepository");
+const userRepository = require("../repositories/userRepository");
+const { sendMail } = require("../utils/sendMail");
 const { differenceInDays } = require("date-fns");
-
 
 const initiateBooking = async (
   userId,
   { vehicleId, pickupHubId, dropoffHubId, startTime, endTime }
 ) => {
-  // Fetch the exact vehicle requested
-  const requestedVehicle = await Vehicle.findByPk(vehicleId);
+  // Fetch requested vehicle 
+  const requestedVehicle = await vehicleRepository.findVehicleById(vehicleId);
   if (!requestedVehicle) {
     const error = new Error("Requested vehicle not found");
     error.statusCode = 404;
@@ -30,29 +35,24 @@ const initiateBooking = async (
   const paddedStart = new Date(start.getTime() - 2 * 60 * 60 * 1000);
   const paddedEnd = new Date(end.getTime() + 2 * 60 * 60 * 1000);
 
-  // Find ALL busy vehicle IDs
+  // Find busy vehicle IDs
   const busyVehicleIds = await findBusyVehicleIds(paddedStart, paddedEnd);
 
   let assignedVehicle = null;
 
-  // Is the requested exact physical car available?
+  // Is requested physical car available?
   if (
     !busyVehicleIds.includes(requestedVehicle.vehicleId) &&
     requestedVehicle.status === "ACTIVE"
   ) {
     assignedVehicle = requestedVehicle;
   } else {
-    // Look for another car of the EXACT SAME MAKE & MODEL at pickup hub
-    assignedVehicle = await Vehicle.findOne({
-      where: {
-        current_hub_id: pickupHubId,
-        make: requestedVehicle.make,
-        model: requestedVehicle.model,
-        status: "ACTIVE",
-        ...(busyVehicleIds.length > 0 && {
-          vehicleId: { [Op.notIn]: busyVehicleIds },
-        }),
-      },
+    // Search for another car with same make and model at pickup hub
+    assignedVehicle = await vehicleRepository.findAlternativeVehicle({
+      hubId: pickupHubId,
+      make: requestedVehicle.make,
+      model: requestedVehicle.model,
+      busyVehicleIds,
     });
   }
 
@@ -64,7 +64,7 @@ const initiateBooking = async (
     throw error;
   }
 
-  // Calculate Pricing & Relocation Fee
+  // Calculate pricing & relocation fee
   const rentalDays = differenceInDays(end, start) || 1;
   let totalPrice = rentalDays * parseFloat(assignedVehicle.base_daily_rate);
   let relocationFee = 0;
@@ -76,7 +76,6 @@ const initiateBooking = async (
 
   const lockedUntil = new Date(Date.now() + 5 * 60 * 1000);
 
-  // Persist the Ghost Booking record via repository layer
   return await createBookingRecord({
     user_id: userId,
     vehicle_id: assignedVehicle.vehicleId,
@@ -92,7 +91,6 @@ const initiateBooking = async (
 };
 
 const confirmBookingPayment = async (userId, bookingId) => {
-  // Fetch booking via repository layer
   const booking = await findBookingById(bookingId);
 
   if (!booking) {
@@ -107,8 +105,8 @@ const confirmBookingPayment = async (userId, bookingId) => {
     throw error;
   }
 
-  // Check if user wallet has sufficient balance
-  const user = await User.findByPk(userId);
+  // Check user balance via repository
+  const user = await userRepository.findUserById(userId);
   if (parseFloat(user.wallet_balance) < parseFloat(booking.total_price)) {
     const error = new Error(
       `Insufficient wallet balance. Please top up ₹${booking.total_price - user.wallet_balance}`
@@ -117,7 +115,7 @@ const confirmBookingPayment = async (userId, bookingId) => {
     throw error;
   }
 
-  // Deduct from Wallet
+  // Deduct from wallet
   await processFinancialMovement({
     userId,
     amount: -Math.abs(booking.total_price),
@@ -126,30 +124,142 @@ const confirmBookingPayment = async (userId, bookingId) => {
     bookingId,
   });
 
-  // Mark status as CONFIRMED 
   return await updateBookingStatus(bookingId, "CONFIRMED");
 };
 
 const reportAccident = async (bookingId) => {
-  const booking = await Booking.findByPk(bookingId);
-  
-  if (!booking || booking.status !== 'ACTIVE_TRIP') {
-    throw new Error("Only active trips can be marked as an emergency.");
+  const booking = await findBookingById(bookingId);
+
+  if (!booking || booking.status !== "ACTIVE_TRIP") {
+    const error = new Error("Only active trips can be marked as an emergency.");
+    error.statusCode = 400;
+    throw error;
   }
 
-  // Pause the clock to stop Late Fees
-  booking.status = 'EMERGENCY_HOLD';
+  // Set status to EMERGENCY_HOLD
+  booking.status = "EMERGENCY_HOLD";
   await booking.save();
 
-  // Immediately trigger the Maintenance Escalation 
-  const { handleMaintenanceEscalation } = require('./escalationService');
+  // Escalate maintenance
+  const { handleMaintenanceEscalation } = require("./escalationService");
   await handleMaintenanceEscalation(booking.vehicle_id);
 
   return { message: "Emergency reported. Late fees paused and future bookings rescued." };
+};
+
+const fetchEmergencyIncidents = async () => {
+  return await getEmergencyBookingsQueue();
+};
+
+const resolveEmergencyIncident = async (bookingId, { resolution, incidentNotes, refundAmount = 0 }) => {
+  const allowed = ["COMPLETED", "CANCELLED"];
+  if (!allowed.includes(resolution)) {
+    const error = new Error("Invalid resolution. Must be COMPLETED or CANCELLED.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const booking = await findBookingByIdWithDetails(bookingId);
+  if (!booking) {
+    const error = new Error("Booking not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (booking.status !== "EMERGENCY_HOLD") {
+    const error = new Error("Only bookings in EMERGENCY_HOLD status can be resolved here.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Update booking record
+  const resolved = await resolveEmergencyRecord(bookingId, {
+    status: resolution,
+    incident_notes: incidentNotes || "Incident resolved by superadmin.",
+  });
+
+  // If refund requested, credit customer wallet
+  const refundVal = parseFloat(refundAmount);
+  if (refundVal > 0) {
+    await processFinancialMovement({
+      userId: booking.user_id,
+      amount: Math.abs(refundVal),
+      type: "REFUND",
+      description: `Emergency incident refund adjustment for Booking ID: ${bookingId}`,
+      bookingId,
+    });
+  }
+
+  // Send email notification to user
+  if (booking.Customer && booking.Customer.email) {
+    const emailBody = `
+      <p>Hello ${booking.Customer.name},</p>
+      <p>Your emergency incident for booking <strong>#${bookingId}</strong> has been resolved by our fleet command team.</p>
+      <p><strong>Outcome:</strong> ${resolution}</p>
+      ${incidentNotes ? `<p><strong>Notes:</strong> ${incidentNotes}</p>` : ""}
+      ${refundVal > 0 ? `<p><strong>Wallet Refund Credited:</strong> ₹${refundVal.toFixed(2)}</p>` : ""}
+      <p>Thank you for your patience and cooperation.</p>
+    `;
+    try {
+      await sendMail(booking.Customer.email, "ShiftDrive Incident Command Resolution", emailBody);
+    } catch (err) {
+      console.error("Failed to send incident resolution email:", err.message);
+    }
+  }
+
+  return resolved;
+};
+
+const adminForceCancelBooking = async (bookingId, { cancellationReason, refundToWallet = false }) => {
+  const booking = await findBookingByIdWithDetails(bookingId);
+  if (!booking) {
+    const error = new Error("Booking not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (["COMPLETED", "CANCELLED"].includes(booking.status)) {
+    const error = new Error(`Cannot cancel a booking with status ${booking.status}.`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Release vehicle if vehicle is not damaged
+  if (booking.Vehicle && booking.Vehicle.status === "IN_USE") {
+    await vehicleRepository.updateVehicleStatus(booking.Vehicle.vehicleId, "ACTIVE");
+  }
+
+  // Process refund if requested and booking had already been charged
+  if (refundToWallet && ["CONFIRMED", "ACTIVE_TRIP", "EMERGENCY_HOLD"].includes(booking.status)) {
+    const refundAmount = parseFloat(booking.total_price);
+    if (refundAmount > 0) {
+      await processFinancialMovement({
+        userId: booking.user_id,
+        amount: Math.abs(refundAmount),
+        type: "REFUND",
+        description: `Admin forced cancellation refund for Booking ID: ${bookingId}`,
+        bookingId,
+      });
+    }
+  }
+
+  return await forceCancelBookingRecord(bookingId, {
+    cancellation_reason: cancellationReason || "Admin administrative override",
+    incident_notes: "Booking force-cancelled by Superadmin.",
+  });
+};
+
+const fetchAdminBookings = async (filters) => {
+  return await getAllBookingsAdmin(filters);
 };
 
 module.exports = {
   initiateBooking,
   confirmBookingPayment,
   reportAccident,
+  fetchEmergencyIncidents,
+  resolveEmergencyIncident,
+  adminForceCancelBooking,
+  fetchAdminBookings,
 };
+

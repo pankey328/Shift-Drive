@@ -2,14 +2,13 @@ const vehicleService = require("../services/vehicleService");
 
 const addVehicle = async (req, res) => {
   try {
-    const { make, model, plate_number, base_daily_rate, current_hub_id } = req.body;
+    const { make, model, plate_number, base_daily_rate, current_hub_id } =
+      req.body;
 
     if (!(make && model && plate_number && base_daily_rate && current_hub_id)) {
-      return res
-        .status(400)
-        .json({
-          message: "All vehicle details including current_hub_id are required",
-        });
+      return res.status(400).json({
+        message: "All vehicle details including current_hub_id are required",
+      });
     }
 
     const vehicle = await vehicleService.addNewVehicle({
@@ -50,7 +49,7 @@ const getVehicles = async (req, res) => {
 const uploadGallery = async (req, res) => {
   try {
     const { id } = req.params; // Vehicle ID
-    const files = req.files; 
+    const files = req.files;
 
     const updatedVehicle = await vehicleService.uploadGalleryImages(id, files);
 
@@ -73,8 +72,85 @@ const searchVehicles = async (req, res) => {
     const { hubId } = req.params;
     const { startTime, endTime } = req.query;
 
-    const vehicles = await vehicleService.searchAvailableFleet(hubId, startTime, endTime);
+    const vehicles = await vehicleService.searchAvailableFleet(
+      hubId,
+      startTime,
+      endTime,
+    );
     return res.status(200).json({ success: true, data: vehicles });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res
+      .status(statusCode)
+      .json({ success: false, message: error.message });
+  }
+};
+
+const getHubFleetDetails = async (req, res) => {
+  try {
+    const { hubId } = req.params;
+    const result = await vehicleService.getHubFleetDetails(hubId);
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const handleUpdateStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ success: false, message: "Status is required." });
+    }
+
+    const updatedVehicle = await vehicleService.changeVehicleStatus(id, status);
+    return res.status(200).json({
+      success: true,
+      message: `Vehicle status changed to ${status}.`,
+      data: updatedVehicle,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const handleTransferHub = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { targetHubId } = req.body;
+
+    if (!targetHubId) {
+      return res.status(400).json({ success: false, message: "targetHubId is required." });
+    }
+
+    const updatedVehicle = await vehicleService.transferVehicleToHub(id, targetHubId);
+    return res.status(200).json({
+      success: true,
+      message: "Vehicle successfully transferred to new hub.",
+      data: updatedVehicle,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const handleUpdateVehicle = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatedVehicle = await vehicleService.updateVehicleInfo(id, req.body);
+    return res.status(200).json({
+      success: true,
+      message: "Vehicle details updated successfully.",
+      data: updatedVehicle,
+    });
   } catch (error) {
     const statusCode = error.statusCode || 500;
     return res.status(statusCode).json({ success: false, message: error.message });
@@ -86,4 +162,9 @@ module.exports = {
   getVehicles,
   uploadGallery,
   searchVehicles,
+  getHubFleetDetails,
+  handleUpdateStatus,
+  handleTransferHub,
+  handleUpdateVehicle,
 };
+

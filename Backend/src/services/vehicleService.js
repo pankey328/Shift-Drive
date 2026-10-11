@@ -1,9 +1,5 @@
-const {
-  createVehicle,
-  getVehiclesByHub,
-  updateVehicleGallery,
-  getAvailableVehicles,
-} = require("../repositories/vehicleRepository");
+const vehicleRepository = require("../repositories/vehicleRepository");
+const hubRepository = require("../repositories/hubRepository");
 const { uploadImage } = require("../utils/cloudinary");
 
 const addNewVehicle = async ({
@@ -12,18 +8,20 @@ const addNewVehicle = async ({
   plate_number,
   base_daily_rate,
   current_hub_id,
+  vehicle_class = "SEDAN",
 }) => {
-  return await createVehicle({
+  return await vehicleRepository.createVehicle({
     make,
     model,
     plate_number,
     base_daily_rate,
     current_hub_id,
+    vehicle_class,
   });
 };
 
 const getHubFleet = async (hubId) => {
-  return await getVehiclesByHub(hubId);
+  return await vehicleRepository.getVehiclesByHub(hubId);
 };
 
 const uploadGalleryImages = async (vehicleId, files) => {
@@ -37,7 +35,7 @@ const uploadGalleryImages = async (vehicleId, files) => {
   const uploadedUrls = await uploadImage(files);
 
   // Save returned URLs to the database
-  return await updateVehicleGallery(vehicleId, uploadedUrls);
+  return await vehicleRepository.updateVehicleGallery(vehicleId, uploadedUrls);
 };
 
 const searchAvailableFleet = async (hubId, startTime, endTime) => {
@@ -48,7 +46,64 @@ const searchAvailableFleet = async (hubId, startTime, endTime) => {
     error.statusCode = 400;
     throw error;
   }
-  return await getAvailableVehicles(hubId, startTime, endTime);
+  return await vehicleRepository.getAvailableVehicles(hubId, startTime, endTime);
+};
+
+const changeVehicleStatus = async (vehicleId, status) => {
+  const validStatuses = ["ACTIVE", "IN_USE", "MAINTENANCE", "RETIRED"];
+  if (!validStatuses.includes(status)) {
+    const error = new Error(`Invalid status. Must be one of: ${validStatuses.join(", ")}`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const vehicle = await vehicleRepository.findVehicleById(vehicleId);
+  if (!vehicle) {
+    const error = new Error("Vehicle not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return await vehicleRepository.updateVehicleStatus(vehicleId, status);
+};
+
+const transferVehicleToHub = async (vehicleId, targetHubId) => {
+  const vehicle = await vehicleRepository.findVehicleById(vehicleId);
+  if (!vehicle) {
+    const error = new Error("Vehicle not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (vehicle.status === "IN_USE") {
+    const error = new Error("Cannot transfer vehicle while it is currently in an active trip (IN_USE).");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const hub = await hubRepository.findHubById(targetHubId);
+  if (!hub) {
+    const error = new Error("Target destination hub not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return await vehicleRepository.transferVehicleHub(vehicleId, targetHubId);
+};
+
+const updateVehicleInfo = async (vehicleId, updateData) => {
+  const vehicle = await vehicleRepository.findVehicleById(vehicleId);
+  if (!vehicle) {
+    const error = new Error("Vehicle not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return await vehicleRepository.updateVehicleRecord(vehicleId, updateData);
+};
+
+const getHubFleetDetails = async (hubId) => {
+  return await vehicleRepository.getHubFleetDetailsWithSummary(hubId);
 };
 
 module.exports = {
@@ -56,4 +111,9 @@ module.exports = {
   getHubFleet,
   uploadGalleryImages,
   searchAvailableFleet,
+  changeVehicleStatus,
+  transferVehicleToHub,
+  updateVehicleInfo,
+  getHubFleetDetails,
 };
+

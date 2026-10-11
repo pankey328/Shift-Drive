@@ -56,4 +56,40 @@ const fetchInspections = async (req, res) => {
   }
 };
 
-module.exports = { addInspection, fetchInspections };
+const getManagerInspections = async (req, res) => {
+  try {
+    const { managerId } = req.params;
+    const result = await inspectionService.fetchManagerInspections(managerId);
+
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const getAllInspections = async (req, res) => {
+  try {
+    const { damageOnly, severity } = req.query;
+    const result = await inspectionService.fetchAllInspections({ damageOnly, severity });
+
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+module.exports = {
+  addInspection,
+  fetchInspections,
+  getManagerInspections,
+  getAllInspections,
+};
+

@@ -1,4 +1,4 @@
-const { Booking } = require("../models");
+const { Booking, User, Vehicle, Hub } = require("../models");
 const { Op } = require("sequelize");
 
 // Check if a specific vehicle is available for given start/end times
@@ -46,6 +46,34 @@ const findBookingById = async (bookingId) => {
   return await Booking.findByPk(bookingId);
 };
 
+// Find booking with complete related models
+const findBookingByIdWithDetails = async (bookingId) => {
+  return await Booking.findByPk(bookingId, {
+    include: [
+      {
+        model: User,
+        as: "Customer",
+        attributes: ["userId", "name", "email", "phone", "wallet_balance", "kyc_status"],
+      },
+      {
+        model: Vehicle,
+        as: "Vehicle",
+        attributes: ["vehicleId", "make", "model", "vehicle_class", "plate_number", "status", "current_hub_id"],
+      },
+      {
+        model: Hub,
+        as: "PickupHub",
+        attributes: ["hubId", "name", "city", "address"],
+      },
+      {
+        model: Hub,
+        as: "DropoffHub",
+        attributes: ["hubId", "name", "city", "address"],
+      },
+    ],
+  });
+};
+
 // Update booking status
 const updateBookingStatus = async (bookingId, status) => {
   const booking = await Booking.findByPk(bookingId);
@@ -70,11 +98,115 @@ const getGhostBookings = async (cutoffTime) => {
   });
 };
 
+// Fetch all bookings in EMERGENCY_HOLD queue
+const getEmergencyBookingsQueue = async () => {
+  return await Booking.findAll({
+    where: { status: "EMERGENCY_HOLD" },
+    include: [
+      {
+        model: User,
+        as: "Customer",
+        attributes: ["userId", "name", "email", "phone", "wallet_balance", "kyc_status"],
+      },
+      {
+        model: Vehicle,
+        as: "Vehicle",
+        attributes: ["vehicleId", "make", "model", "vehicle_class", "plate_number", "status"],
+      },
+      {
+        model: Hub,
+        as: "PickupHub",
+        attributes: ["hubId", "name", "city", "address"],
+      },
+      {
+        model: Hub,
+        as: "DropoffHub",
+        attributes: ["hubId", "name", "city", "address"],
+      },
+    ],
+    order: [["updatedAt", "DESC"]],
+  });
+};
+
+// Resolve an emergency incident
+const resolveEmergencyRecord = async (bookingId, { status, incident_notes }) => {
+  const booking = await Booking.findByPk(bookingId);
+  if (!booking) {
+    const error = new Error("Booking not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  booking.status = status;
+  if (incident_notes) {
+    booking.incident_notes = incident_notes;
+  }
+  await booking.save();
+  return booking;
+};
+
+// Force cancel a booking with audit trail
+const forceCancelBookingRecord = async (bookingId, { cancellation_reason, incident_notes }) => {
+  const booking = await Booking.findByPk(bookingId);
+  if (!booking) {
+    const error = new Error("Booking not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  booking.status = "CANCELLED";
+  if (cancellation_reason) booking.cancellation_reason = cancellation_reason;
+  if (incident_notes) booking.incident_notes = incident_notes;
+  await booking.save();
+  return booking;
+};
+
+// List all bookings for admin with filters
+const getAllBookingsAdmin = async (filters = {}) => {
+  const where = {};
+  if (filters.status) where.status = filters.status;
+  if (filters.userId) where.user_id = filters.userId;
+  if (filters.vehicleId) where.vehicle_id = filters.vehicleId;
+
+  return await Booking.findAll({
+    where,
+    include: [
+      {
+        model: User,
+        as: "Customer",
+        attributes: ["userId", "name", "email", "phone"],
+      },
+      {
+        model: Vehicle,
+        as: "Vehicle",
+        attributes: ["vehicleId", "make", "model", "plate_number", "status"],
+      },
+      {
+        model: Hub,
+        as: "PickupHub",
+        attributes: ["hubId", "name", "city"],
+      },
+      {
+        model: Hub,
+        as: "DropoffHub",
+        attributes: ["hubId", "name", "city"],
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+  });
+};
+
 module.exports = {
   checkVehicleAvailability,
   findBusyVehicleIds,
   createBookingRecord,
   findBookingById,
+  findBookingByIdWithDetails,
   updateBookingStatus,
   getGhostBookings,
+  getEmergencyBookingsQueue,
+  resolveEmergencyRecord,
+  forceCancelBookingRecord,
+  getAllBookingsAdmin,
 };
+

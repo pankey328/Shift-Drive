@@ -1,8 +1,4 @@
 const authService = require("../services/authService");
-const { User, Hub } = require("../models");
-const bcrypt = require("bcrypt");
-const crypto = require("crypto");
-const { sendMail } = require('../utils/sendMail')
 
 // Login User /api/auth/login
 const login = async (req, res) => {
@@ -184,46 +180,41 @@ const registerHubManager = async (req, res) => {
   try {
     const { name, email, phone, hub_id } = req.body;
 
-    const hub = await Hub.findByPk(hub_id);
-    if (!hub) return res.status(404).json({ message: "Hub not found." });
-
-    const tempPassword = crypto.randomBytes(4).toString("hex");
-    const hashedPassword = await bcrypt.hash(tempPassword, 10);
-
-    const manager = await User.create({
+    const result = await authService.registerHubManager({
       name,
       email,
       phone,
-      password: hashedPassword,
-      role: "HUB_ADMIN",
-      requires_password_change: true,
+      hub_id,
     });
-
-    hub.manager_id = manager.userId;
-    await hub.save();
-
-    const emailBody = `
-      <p>Hello ${name},</p>
-      <p>You have been appointed as the Hub Manager for <strong>${hub.name}</strong>.</p>
-      <p>Your temporary login password is: <strong>${tempPassword}</strong></p>
-      <p>Please log in to your dashboard. You will be required to set a permanent password immediately.</p>
-    `;
-
-    await sendMail(email, "Welcome to ShiftDrive - Account Setup", emailBody);
 
     return res.status(201).json({
       success: true,
-      message: `Manager ${name} assigned to ${hub.name}. Temporary password sent via email.`,
+      message: `Manager ${name} assigned to ${result.hubName}. Temporary password sent via email.`,
       data: {
-        userId: manager.userId,
-        name: manager.name,
-        email: manager.email,
-        phone: manager.phone,
-        temp_password_dev_only: tempPassword,
+        ...result.manager,
+        temp_password_dev_only: result.tempPassword,
       },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const setupPermanentPassword = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { newPassword } = req.body;
+
+    const result = await authService.setupPermanentPassword(userId, newPassword);
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
   }
 };
 
@@ -238,4 +229,5 @@ module.exports = {
   reset,
   getMe,
   registerHubManager,
+  setupPermanentPassword,
 };

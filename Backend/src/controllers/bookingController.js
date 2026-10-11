@@ -40,7 +40,101 @@ const payForBooking = async (req, res) => {
   }
 };
 
+const reportEmergency = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const result = await bookingService.reportAccident(bookingId);
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const getEmergencyQueue = async (req, res) => {
+  try {
+    const emergencies = await bookingService.fetchEmergencyIncidents();
+    return res.status(200).json({
+      success: true,
+      total_emergencies: emergencies.length,
+      data: emergencies,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const resolveEmergency = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { resolution, incidentNotes, refundAmount } = req.body;
+
+    const updatedBooking = await bookingService.resolveEmergencyIncident(bookingId, {
+      resolution,
+      incidentNotes,
+      refundAmount,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Emergency incident resolved with outcome: ${resolution}.`,
+      data: updatedBooking,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const forceCancel = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { cancellationReason, refundToWallet } = req.body;
+
+    const cancelledBooking = await bookingService.adminForceCancelBooking(bookingId, {
+      cancellationReason,
+      refundToWallet: refundToWallet === true || refundToWallet === "true",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking has been force-cancelled by administrator.",
+      data: cancelledBooking,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const listAllBookings = async (req, res) => {
+  try {
+    const { status, userId, vehicleId } = req.query;
+    const filters = {};
+    if (status) filters.status = status;
+    if (userId) filters.userId = userId;
+    if (vehicleId) filters.vehicleId = vehicleId;
+
+    const bookings = await bookingService.fetchAdminBookings(filters);
+    return res.status(200).json({
+      success: true,
+      total: bookings.length,
+      data: bookings,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   createBooking,
   payForBooking,
+  reportEmergency,
+  getEmergencyQueue,
+  resolveEmergency,
+  forceCancel,
+  listAllBookings,
 };
+
