@@ -14,13 +14,81 @@ const {
 } = require("../repositories/walletRepository");
 const vehicleRepository = require("../repositories/vehicleRepository");
 const userRepository = require("../repositories/userRepository");
+const hubRepository = require("../repositories/hubRepository");
 const { sendMail } = require("../utils/sendMail");
+const { getTimeString, isWithinOperatingHours } = require("../utils/timeUtils");
 const { differenceInDays } = require("date-fns");
 
 const initiateBooking = async (
   userId,
   { vehicleId, pickupHubId, dropoffHubId, startTime, endTime }
 ) => {
+  // Validate time format and chronology
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    const error = new Error("Invalid start or end time format.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (end <= start) {
+    const error = new Error("Dropoff time must be strictly after pickup time.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Validate Pickup Hub & Operating Hours
+  const pickupHub = await hubRepository.findHubById(pickupHubId);
+  if (!pickupHub) {
+    const error = new Error("Pickup hub not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+  if (pickupHub.status !== "ACTIVE") {
+    const error = new Error(
+      `Pickup hub (${pickupHub.name}) is currently ${pickupHub.status.toLowerCase()} and cannot accept bookings.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const pickupTimeStr = getTimeString(startTime);
+  if (!isWithinOperatingHours(pickupTimeStr, pickupHub.opening_time, pickupHub.closing_time)) {
+    const error = new Error(
+      `Pickup hub (${pickupHub.name}) is closed at ${pickupTimeStr.slice(0, 5)}. Operating hours are ${pickupHub.opening_time.slice(0, 5)} to ${pickupHub.closing_time.slice(0, 5)}.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Validate Dropoff Hub & Operating Hours
+  const dropoffHub =
+    pickupHubId === dropoffHubId
+      ? pickupHub
+      : await hubRepository.findHubById(dropoffHubId);
+  if (!dropoffHub) {
+    const error = new Error("Dropoff hub not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+  if (dropoffHub.status !== "ACTIVE") {
+    const error = new Error(
+      `Dropoff hub (${dropoffHub.name}) is currently ${dropoffHub.status.toLowerCase()} and cannot accept returns.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const dropoffTimeStr = getTimeString(endTime);
+  if (!isWithinOperatingHours(dropoffTimeStr, dropoffHub.opening_time, dropoffHub.closing_time)) {
+    const error = new Error(
+      `Return hub (${dropoffHub.name}) is closed at ${dropoffTimeStr.slice(0, 5)}. Operating hours are ${dropoffHub.opening_time.slice(0, 5)} to ${dropoffHub.closing_time.slice(0, 5)}. Please select a return time during station operating hours.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
   // Fetch requested vehicle 
   const requestedVehicle = await vehicleRepository.findVehicleById(vehicleId);
   if (!requestedVehicle) {
@@ -30,8 +98,6 @@ const initiateBooking = async (
   }
 
   // Calculate safety buffers (2 hours)
-  const start = new Date(startTime);
-  const end = new Date(endTime);
   const paddedStart = new Date(start.getTime() - 2 * 60 * 60 * 1000);
   const paddedEnd = new Date(end.getTime() + 2 * 60 * 60 * 1000);
 

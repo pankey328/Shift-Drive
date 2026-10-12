@@ -1,6 +1,7 @@
 const vehicleRepository = require("../repositories/vehicleRepository");
 const hubRepository = require("../repositories/hubRepository");
 const { uploadImage } = require("../utils/cloudinary");
+const { getTimeString, isWithinOperatingHours } = require("../utils/timeUtils");
 
 const addNewVehicle = async ({
   make,
@@ -46,6 +47,31 @@ const searchAvailableFleet = async (hubId, startTime, endTime) => {
     error.statusCode = 400;
     throw error;
   }
+
+  const hub = await hubRepository.findHubById(hubId);
+  if (!hub) {
+    const error = new Error("Hub not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (hub.status !== "ACTIVE") {
+    const error = new Error(
+      `Hub (${hub.name}) is currently ${hub.status.toLowerCase()} and cannot accept bookings.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const pickupTimeStr = getTimeString(startTime);
+  if (!isWithinOperatingHours(pickupTimeStr, hub.opening_time, hub.closing_time)) {
+    const error = new Error(
+      `Hub (${hub.name}) is closed at ${pickupTimeStr.slice(0, 5)}. Operating hours are ${hub.opening_time.slice(0, 5)} to ${hub.closing_time.slice(0, 5)}.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
   return await vehicleRepository.getAvailableVehicles(hubId, startTime, endTime);
 };
 
