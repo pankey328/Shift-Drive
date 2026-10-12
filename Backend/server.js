@@ -10,6 +10,7 @@ const bookingRoutes = require("./src/routes/bookingRoutes");
 const inspectionRoutes = require("./src/routes/inspectionRoutes");
 const analyticsRoutes = require("./src/routes/analyticsRoutes");
 const adminUserRoutes = require("./src/routes/adminUserRoutes");
+const hubAdminRoutes = require("./src/routes/hubAdminRoutes");
 const startBookingCron = require("./src/cron/ghostBookingCron");
 const startLateReturnCron = require("./src/cron/lateReturnCron");
 
@@ -31,6 +32,8 @@ app.use("/api/bookings", bookingRoutes);
 app.use("/api/inspections", inspectionRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/admin/users", adminUserRoutes);
+app.use("/api/hub-admin", hubAdminRoutes);
+app.use("/api/manager", hubAdminRoutes);
 
 // Database connection & Server start
 const startServer = async () => {

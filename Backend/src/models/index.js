@@ -5,6 +5,8 @@ const Vehicle = require("./Vehicle");
 const Booking = require("./Booking");
 const WalletTransaction = require("./WalletTransaction");
 const Inspection = require("./Inspection");
+const FleetTransfer = require("./FleetTransfer");
+const LostAndFound = require("./LostAndFound");
 
 // Hub Management
 User.hasOne(Hub, { foreignKey: "manager_id", as: "ManagedHub" });
@@ -43,6 +45,44 @@ Booking.hasMany(WalletTransaction, {
 });
 WalletTransaction.belongsTo(Booking, { foreignKey: "booking_id" });
 
+// Fleet Rebalancing / Deadheading Transfers
+Hub.hasMany(FleetTransfer, {
+  foreignKey: "source_hub_id",
+  as: "OutboundTransfers",
+});
+FleetTransfer.belongsTo(Hub, { foreignKey: "source_hub_id", as: "SourceHub" });
+
+Hub.hasMany(FleetTransfer, {
+  foreignKey: "destination_hub_id",
+  as: "InboundTransfers",
+});
+FleetTransfer.belongsTo(Hub, {
+  foreignKey: "destination_hub_id",
+  as: "DestinationHub",
+});
+
+Vehicle.hasMany(FleetTransfer, { foreignKey: "vehicle_id", as: "Transfers" });
+FleetTransfer.belongsTo(Vehicle, { foreignKey: "vehicle_id", as: "Vehicle" });
+
+User.hasMany(FleetTransfer, {
+  foreignKey: "initiated_by",
+  as: "InitiatedTransfers",
+});
+FleetTransfer.belongsTo(User, { foreignKey: "initiated_by", as: "Initiator" });
+
+// Lost & Found
+Hub.hasMany(LostAndFound, { foreignKey: "hub_id", as: "LostItems" });
+LostAndFound.belongsTo(Hub, { foreignKey: "hub_id", as: "Hub" });
+
+Vehicle.hasMany(LostAndFound, { foreignKey: "vehicle_id", as: "LostItems" });
+LostAndFound.belongsTo(Vehicle, { foreignKey: "vehicle_id", as: "Vehicle" });
+
+Booking.hasMany(LostAndFound, { foreignKey: "booking_id", as: "LostItems" });
+LostAndFound.belongsTo(Booking, { foreignKey: "booking_id", as: "Booking" });
+
+User.hasMany(LostAndFound, { foreignKey: "logged_by", as: "LoggedLostItems" });
+LostAndFound.belongsTo(User, { foreignKey: "logged_by", as: "LoggedBy" });
+
 module.exports = {
   sequelize,
   User,
@@ -51,4 +91,6 @@ module.exports = {
   Booking,
   WalletTransaction,
   Inspection,
+  FleetTransfer,
+  LostAndFound,
 };
