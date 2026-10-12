@@ -1,4 +1,4 @@
-const { Booking, User, Vehicle, Hub } = require("../models");
+const { Booking, User, Vehicle, Hub, Inspection } = require("../models");
 const { Op } = require("sequelize");
 
 // Check if a specific vehicle is available for given start/end times
@@ -196,6 +196,85 @@ const getAllBookingsAdmin = async (filters = {}) => {
   });
 };
 
+// List bookings for a specific customer with complete details
+const getUserBookings = async (userId, filters = {}) => {
+  const where = { user_id: userId };
+  if (filters.status) where.status = filters.status;
+
+  return await Booking.findAll({
+    where,
+    include: [
+      {
+        model: Vehicle,
+        as: "Vehicle",
+        attributes: [
+          "vehicleId",
+          "make",
+          "model",
+          "vehicle_class",
+          "plate_number",
+          "status",
+          "gallery_urls",
+          "base_daily_rate",
+        ],
+      },
+      {
+        model: Hub,
+        as: "PickupHub",
+        attributes: [
+          "hubId",
+          "name",
+          "city",
+          "address",
+          "opening_time",
+          "closing_time",
+        ],
+      },
+      {
+        model: Hub,
+        as: "DropoffHub",
+        attributes: [
+          "hubId",
+          "name",
+          "city",
+          "address",
+          "opening_time",
+          "closing_time",
+        ],
+      },
+      {
+        model: Inspection,
+        as: "Inspections",
+        attributes: [
+          "inspectionId",
+          "type",
+          "photo_urls",
+          "notes",
+          "damage_flagged",
+          "damage_severity",
+          "createdAt",
+        ],
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+  });
+};
+
+// Customer cancels booking
+const cancelBookingByCustomer = async (bookingId, cancellationReason) => {
+  const booking = await Booking.findByPk(bookingId);
+  if (!booking) {
+    const error = new Error("Booking not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  booking.status = "CANCELLED";
+  booking.cancellation_reason = cancellationReason || "Cancelled by customer";
+  await booking.save();
+  return booking;
+};
+
 module.exports = {
   checkVehicleAvailability,
   findBusyVehicleIds,
@@ -208,5 +287,8 @@ module.exports = {
   resolveEmergencyRecord,
   forceCancelBookingRecord,
   getAllBookingsAdmin,
+  getUserBookings,
+  cancelBookingByCustomer,
 };
+
 

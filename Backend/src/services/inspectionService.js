@@ -67,8 +67,14 @@ const submitInspection = async (
 
   if (type === "PRE_TRIP") {
     await updateBookingStatus(bookingId, "ACTIVE_TRIP");
+    await vehicleRepository.updateVehicleStatus(booking.vehicle_id, "IN_USE");
   } else if (type === "POST_TRIP") {
     await updateBookingStatus(bookingId, "COMPLETED");
+
+    // Re-assign vehicle hub to dropoff_hub_id for one-way rentals
+    if (booking.dropoff_hub_id) {
+      await vehicleRepository.transferVehicleHub(booking.vehicle_id, booking.dropoff_hub_id);
+    }
 
     if (isDamaged && damage_severity) {
       const tier = DAMAGE_TIERS[damage_severity.toUpperCase()];
@@ -94,8 +100,11 @@ const submitInspection = async (
         // Trigger the background escalation to swap user to a new car
         await handleMaintenanceEscalation(vehicle.vehicleId);
       }
+    } else {
+      await vehicleRepository.updateVehicleStatus(booking.vehicle_id, "ACTIVE");
     }
   }
+
 
   return inspection;
 };

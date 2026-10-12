@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const userRepository = require("../repositories/userRepository");
 const hubRepository = require("../repositories/hubRepository");
 const { sendMail, generateOtp } = require("../utils/sendMail");
+const { uploadImage } = require("../utils/cloudinary");
 
 const generateToken = (user) => {
   return jwt.sign(
@@ -38,6 +39,12 @@ const loginUser = async ({ email, password }) => {
   if (userExist.isVerified === false) {
     const error = new Error("Please verify your account before logging in");
     error.statusCode = 400;
+    throw error;
+  }
+
+  if (userExist.is_active === false) {
+    const error = new Error("Your account has been deactivated or suspended. Please contact customer support.");
+    error.statusCode = 403;
     throw error;
   }
 
@@ -89,6 +96,12 @@ const googleLogin = async ({ name, email, photo, uid }) => {
       googleId: uid,
       photo,
     });
+  }
+
+  if (user && user.is_active === false) {
+    const error = new Error("Your account has been deactivated or suspended. Please contact customer support.");
+    error.statusCode = 403;
+    throw error;
   }
 
   const token = generateToken(user);
@@ -572,6 +585,30 @@ const setupPermanentPassword = async (userId, newPassword) => {
   return { message: "Password updated successfully. Welcome to ShiftDrive!" };
 };
 
+const uploadKycDocument = async (userId, files) => {
+  if (!files || files.length === 0) {
+    const error = new Error("Please upload at least one valid document image (JPG, PNG, WEBP).");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const uploadedUrls = await uploadImage(files);
+  if (!uploadedUrls || uploadedUrls.length === 0) {
+    const error = new Error("Failed to upload KYC document to cloud storage.");
+    error.statusCode = 500;
+    throw error;
+  }
+
+  const documentUrl = uploadedUrls[0];
+  const updatedUser = await userRepository.updateUserKycDocument(userId, documentUrl);
+
+  return {
+    message: "KYC document uploaded successfully. Verification is pending approval.",
+    kyc_status: updatedUser.kyc_status,
+    kyc_document_url: updatedUser.kyc_document_url,
+  };
+};
+
 module.exports = {
   loginUser,
   googleLogin,
@@ -583,5 +620,7 @@ module.exports = {
   getUserProfile,
   registerHubManager,
   setupPermanentPassword,
+  uploadKycDocument,
 };
+
 

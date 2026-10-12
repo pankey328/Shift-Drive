@@ -128,6 +128,65 @@ const listAllBookings = async (req, res) => {
   }
 };
 
+const getUserBookings = async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const { status } = req.query;
+
+    const bookings = await bookingService.fetchUserBookings(userId, { status });
+    return res.status(200).json({
+      success: true,
+      count: bookings.length,
+      data: bookings,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const getBookingDetails = async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const userRole = req.user.role;
+    const { bookingId } = req.params;
+
+    const booking = await bookingService.fetchUserBookingDetails(
+      userId,
+      userRole,
+      bookingId
+    );
+    return res.status(200).json({ success: true, data: booking });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const cancelBooking = async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const { bookingId } = req.params;
+    const { cancellationReason } = req.body;
+
+    const cancelledBooking = await bookingService.cancelCustomerBooking(
+      userId,
+      bookingId,
+      { cancellationReason }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Booking cancelled successfully. Any payments have been refunded to your wallet.",
+      data: cancelledBooking,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   createBooking,
   payForBooking,
@@ -136,5 +195,9 @@ module.exports = {
   resolveEmergency,
   forceCancel,
   listAllBookings,
+  getUserBookings,
+  getBookingDetails,
+  cancelBooking,
 };
+
 

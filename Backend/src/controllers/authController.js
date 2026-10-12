@@ -218,6 +218,18 @@ const setupPermanentPassword = async (req, res) => {
   }
 };
 
+const submitKyc = async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const files = req.files || (req.file ? [req.file] : []);
+
+    const result = await authService.uploadKycDocument(userId, files);
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
 
 module.exports = {
   login,
@@ -230,4 +242,6 @@ module.exports = {
   getMe,
   registerHubManager,
   setupPermanentPassword,
+  submitKyc,
 };
+

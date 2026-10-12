@@ -132,6 +132,16 @@ const getHubFleetDetails = async (hubId) => {
   return await vehicleRepository.getHubFleetDetailsWithSummary(hubId);
 };
 
+const getVehicleDetails = async (vehicleId) => {
+  const vehicle = await vehicleRepository.findVehicleById(vehicleId);
+  if (!vehicle) {
+    const error = new Error("Vehicle not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+  return vehicle;
+};
+
 module.exports = {
   addNewVehicle,
   getHubFleet,
@@ -141,5 +151,7 @@ module.exports = {
   transferVehicleToHub,
   updateVehicleInfo,
   getHubFleetDetails,
+  getVehicleDetails,
 };
+
 

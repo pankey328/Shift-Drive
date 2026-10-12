@@ -157,6 +157,17 @@ const handleUpdateVehicle = async (req, res) => {
   }
 };
 
+const getVehicleById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const vehicle = await vehicleService.getVehicleDetails(id);
+    return res.status(200).json({ success: true, data: vehicle });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   addVehicle,
   getVehicles,
@@ -166,5 +177,7 @@ module.exports = {
   handleUpdateStatus,
   handleTransferHub,
   handleUpdateVehicle,
+  getVehicleById,
 };
+
 

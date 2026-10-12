@@ -8,6 +8,8 @@ const {
   resolveEmergencyRecord,
   forceCancelBookingRecord,
   getAllBookingsAdmin,
+  getUserBookings,
+  cancelBookingByCustomer,
 } = require("../repositories/bookingRepository");
 const {
   processFinancialMovement,
@@ -23,6 +25,14 @@ const initiateBooking = async (
   userId,
   { vehicleId, pickupHubId, dropoffHubId, startTime, endTime }
 ) => {
+  // Validate customer account status
+  const customer = await userRepository.findUserById(userId);
+  if (!customer || customer.is_active === false) {
+    const error = new Error("Your account has been deactivated or suspended. Please contact customer support.");
+    error.statusCode = 403;
+    throw error;
+  }
+
   // Validate time format and chronology
   const start = new Date(startTime);
   const end = new Date(endTime);
@@ -31,6 +41,7 @@ const initiateBooking = async (
     error.statusCode = 400;
     throw error;
   }
+
 
   if (end <= start) {
     const error = new Error("Dropoff time must be strictly after pickup time.");
@@ -171,8 +182,22 @@ const confirmBookingPayment = async (userId, bookingId) => {
     throw error;
   }
 
-  // Check user balance via repository
+  // Check user status and KYC via repository
   const user = await userRepository.findUserById(userId);
+  if (!user || user.is_active === false) {
+    const error = new Error("Your account has been deactivated or suspended. Please contact customer support.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (user.kyc_status !== "VERIFIED") {
+    const error = new Error(
+      "KYC verification required. Your driving license must be approved before confirming a booking and taking vehicle handover."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
   if (parseFloat(user.wallet_balance) < parseFloat(booking.total_price)) {
     const error = new Error(
       `Insufficient wallet balance. Please top up ₹${booking.total_price - user.wallet_balance}`
@@ -319,6 +344,85 @@ const fetchAdminBookings = async (filters) => {
   return await getAllBookingsAdmin(filters);
 };
 
+const fetchUserBookings = async (userId, filters = {}) => {
+  return await getUserBookings(userId, filters);
+};
+
+const fetchUserBookingDetails = async (userId, userRole, bookingId) => {
+  const booking = await findBookingByIdWithDetails(bookingId);
+  if (!booking) {
+    const error = new Error("Booking not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (booking.user_id !== userId && !["SUPERADMIN", "HUB_ADMIN"].includes(userRole)) {
+    const error = new Error("You are not authorized to view this booking.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return booking;
+};
+
+const cancelCustomerBooking = async (userId, bookingId, { cancellationReason } = {}) => {
+  const booking = await findBookingById(bookingId);
+  if (!booking) {
+    const error = new Error("Booking not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (booking.user_id !== userId) {
+    const error = new Error("You are not authorized to cancel this booking.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (booking.status === "ACTIVE_TRIP") {
+    const error = new Error(
+      "Cannot cancel an ongoing active trip. Please return the car to the hub to complete your trip."
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (["COMPLETED", "CANCELLED", "EXPIRED"].includes(booking.status)) {
+    const error = new Error(
+      `Cannot cancel a booking that is already ${booking.status.toLowerCase()}.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // If booking was CONFIRMED (charged), refund full amount back to user wallet
+  if (booking.status === "CONFIRMED") {
+    const refundAmount = parseFloat(booking.total_price);
+    if (refundAmount > 0) {
+      await processFinancialMovement({
+        userId,
+        amount: Math.abs(refundAmount),
+        type: "REFUND",
+        description: `Customer cancellation refund for Booking ID: ${bookingId}`,
+        bookingId,
+      });
+    }
+  }
+
+  // Ensure vehicle is ACTIVE if it was reserved
+  if (booking.vehicle_id) {
+    const vehicle = await vehicleRepository.findVehicleById(booking.vehicle_id);
+    if (vehicle && vehicle.status === "IN_USE") {
+      await vehicleRepository.updateVehicleStatus(vehicle.vehicleId, "ACTIVE");
+    }
+  }
+
+  return await cancelBookingByCustomer(
+    bookingId,
+    cancellationReason || "Cancelled by customer before trip start"
+  );
+};
+
 module.exports = {
   initiateBooking,
   confirmBookingPayment,
@@ -327,5 +431,9 @@ module.exports = {
   resolveEmergencyIncident,
   adminForceCancelBooking,
   fetchAdminBookings,
+  fetchUserBookings,
+  fetchUserBookingDetails,
+  cancelCustomerBooking,
 };
+
 

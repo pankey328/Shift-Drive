@@ -1,6 +1,7 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const router = express.Router();
+const upload = require("../middleware/uploadMiddleware");
 const {
   login,
   googleLogin,
@@ -12,6 +13,7 @@ const {
   getMe,
   setupPermanentPassword,
   registerHubManager,
+  submitKyc,
 } = require("../controllers/authController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 
@@ -33,6 +35,7 @@ router.post("/verify-forget", verifyForget);
 router.post("/reset", reset);
 router.get("/me", protect, getMe);
 router.post("/setup-password", protect, setupPermanentPassword);
+router.post("/kyc", protect, upload.array("documents", 2), submitKyc);
 router.post(
   "/register-manager",
   protect,
@@ -41,3 +44,4 @@ router.post(
 );
 
 module.exports = router;
+

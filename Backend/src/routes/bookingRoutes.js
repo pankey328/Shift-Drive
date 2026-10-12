@@ -9,6 +9,9 @@ const {
   resolveEmergency,
   forceCancel,
   listAllBookings,
+  getUserBookings,
+  getBookingDetails,
+  cancelBooking,
 } = require("../controllers/bookingController");
 
 router.use(protect);
@@ -20,9 +23,13 @@ router.patch("/admin/:bookingId/resolve-emergency", authorize("SUPERADMIN"), res
 router.patch("/admin/:bookingId/force-cancel", authorize("SUPERADMIN"), forceCancel);
 
 // Customer booking flows
+router.get("/my-bookings", getUserBookings);
+router.get("/:bookingId", getBookingDetails);
 router.post("/initiate", createBooking);
 router.post("/:bookingId/pay", payForBooking);
+router.post("/:bookingId/cancel", cancelBooking);
 router.post("/:bookingId/emergency", reportEmergency);
 
 module.exports = router;
+
 

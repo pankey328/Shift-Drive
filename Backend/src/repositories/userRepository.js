@@ -153,6 +153,21 @@ const updatePermanentPassword = async (userId, hashedPassword) => {
   return user;
 };
 
+// Customer uploads driving license / KYC document
+const updateUserKycDocument = async (userId, documentUrl) => {
+  const user = await User.findByPk(userId);
+  if (!user) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  user.kyc_document_url = documentUrl;
+  user.kyc_status = "PENDING";
+  user.kyc_rejection_reason = null;
+  await user.save();
+  return user;
+};
+
 module.exports = {
   findUserByEmail,
   findUserById,
@@ -164,9 +179,11 @@ module.exports = {
   updateUserPassword,
   getUsersByKycStatus,
   updateUserKyc,
+  updateUserKycDocument,
   updateUserAccountStatus,
   getAllUsersList,
   createHubManager,
   updatePermanentPassword,
 };
+
 
