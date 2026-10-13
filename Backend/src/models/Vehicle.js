@@ -26,7 +26,12 @@ const Vehicle = sequelize.define(
       defaultValue: "ACTIVE",
     },
     gallery_urls: { type: DataTypes.JSON, defaultValue: [] },
+    seats: { type: DataTypes.INTEGER, defaultValue: 5 },
+    fuel_type: { type: DataTypes.STRING(30), defaultValue: "Petrol" },
+    transmission: { type: DataTypes.STRING(30), defaultValue: "Automatic" },
+    tag: { type: DataTypes.STRING(50), allowNull: true },
   },
+
   {
     tableName: "vehicles",
     timestamps: true,

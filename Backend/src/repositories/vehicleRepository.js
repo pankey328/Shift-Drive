@@ -178,6 +178,27 @@ const getHubFleetDetailsWithSummary = async (hubId) => {
   };
 };
 
+const getAllActiveVehicles = async (filters = {}) => {
+  const where = { status: "ACTIVE" };
+  if (filters.category && filters.category !== "ALL") {
+    where.vehicle_class = filters.category;
+  }
+  if (filters.hubId) {
+    where.current_hub_id = filters.hubId;
+  }
+  return await Vehicle.findAll({
+    where,
+    include: [
+      {
+        model: Hub,
+        as: "CurrentHub",
+        attributes: ["hubId", "name", "city", "address", "status"],
+      },
+    ],
+    order: [["base_daily_rate", "DESC"]],
+  });
+};
+
 module.exports = {
   createVehicle,
   getVehiclesByHub,
@@ -189,5 +210,7 @@ module.exports = {
   updateVehicleGallery,
   getAvailableVehicles,
   getHubFleetDetailsWithSummary,
+  getAllActiveVehicles,
 };
+
 

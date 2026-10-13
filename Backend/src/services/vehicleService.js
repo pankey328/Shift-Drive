@@ -142,6 +142,10 @@ const getVehicleDetails = async (vehicleId) => {
   return vehicle;
 };
 
+const getAllFleet = async (filters = {}) => {
+  return await vehicleRepository.getAllActiveVehicles(filters);
+};
+
 module.exports = {
   addNewVehicle,
   getHubFleet,
@@ -152,6 +156,8 @@ module.exports = {
   updateVehicleInfo,
   getHubFleetDetails,
   getVehicleDetails,
+  getAllFleet,
 };
+
 
 

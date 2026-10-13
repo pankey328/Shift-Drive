@@ -168,6 +168,21 @@ const getVehicleById = async (req, res) => {
   }
 };
 
+const getAllVehicles = async (req, res) => {
+  try {
+    const { category, hubId } = req.query;
+    const vehicles = await vehicleService.getAllFleet({ category, hubId });
+    return res.status(200).json({
+      success: true,
+      count: vehicles.length,
+      data: vehicles,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   addVehicle,
   getVehicles,
@@ -178,6 +193,8 @@ module.exports = {
   handleTransferHub,
   handleUpdateVehicle,
   getVehicleById,
+  getAllVehicles,
 };
+
 
 

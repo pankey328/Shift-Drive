@@ -12,13 +12,16 @@ const {
   handleTransferHub,
   handleUpdateVehicle,
   getVehicleById,
+  getAllVehicles,
 } = require("../controllers/vehicleController");
 
+router.get("/", getAllVehicles);
 router.get("/hub/:hubId/search", searchVehicles);
 router.get("/hub/:hubId", getVehicles);
 router.get("/:id", getVehicleById);
 
 router.use(protect);
+
 
 
 router.get("/admin/hub/:hubId", authorize("HUB_ADMIN", "SUPERADMIN"), getHubFleetDetails);
