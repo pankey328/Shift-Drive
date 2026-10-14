@@ -254,16 +254,20 @@ function CheckoutContent() {
   const pickupHub = hubs.find((h) => h.hubId === pickupHubId);
   const dropoffHub = hubs.find((h) => h.hubId === dropoffHubId) || pickupHub;
   const isOneWay = pickupHubId && dropoffHubId && pickupHubId !== dropoffHubId;
+  const baseDailyRate = parseFloat(vehicle?.base_daily_rate || 0);
 
   const rentalDays = useMemo(() => {
+    if (booking && baseDailyRate > 0) {
+      const netDailyRental = parseFloat(booking.total_price) - (isOneWay ? 500 : 0);
+      return Math.max(1, Math.round(netDailyRental / baseDailyRate));
+    }
     if (!startTime || !endTime) return 1;
     const s = new Date(startTime);
     const e = new Date(endTime);
     const diffHours = (e - s) / (1000 * 60 * 60);
-    return Math.max(1, Math.ceil(diffHours / 24));
-  }, [startTime, endTime]);
+    return Math.max(1, Math.floor(diffHours / 24));
+  }, [booking, baseDailyRate, isOneWay, startTime, endTime]);
 
-  const baseDailyRate = parseFloat(vehicle?.base_daily_rate || 0);
   const estimatedTotal = booking
     ? parseFloat(booking.total_price)
     : baseDailyRate * rentalDays + (isOneWay ? 500 : 0);

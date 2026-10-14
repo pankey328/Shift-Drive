@@ -120,7 +120,7 @@ function FleetContent() {
           setVehicles(res.data.data);
         }
       } else {
-        // Fallback: fetch general active fleet
+        // fetch general active fleet
         const res = await api.get("/vehicles");
         if (res.data?.data) {
           setVehicles(res.data.data);
@@ -130,9 +130,9 @@ function FleetContent() {
       console.warn("Search fleet error:", err.response?.data || err.message);
       setSearchError(
         err.response?.data?.message ||
-          "Could not check vehicle availability for the selected station and time."
+        "Could not check vehicle availability for the selected station and time."
       );
-      // Fallback: fetch all active vehicles so the user can still see the fleet catalog
+      // fetch all active vehicles
       try {
         const fallbackRes = await api.get("/vehicles");
         if (fallbackRes.data?.data) {
@@ -243,7 +243,7 @@ function FleetContent() {
         if (sortBy === "PRICE_ASC") return rateA - rateB;
         if (sortBy === "PRICE_DESC") return rateB - rateA;
         if (sortBy === "SEATS_DESC") return (b.seats || 5) - (a.seats || 5);
-        return 0; // RECOMMENDED
+        return 0;
       });
   }, [
     vehicles,
@@ -435,11 +435,10 @@ function FleetContent() {
                 key={cat}
                 type="button"
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                  selectedCategory === cat
-                    ? "bg-white text-black shadow-md"
-                    : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
-                }`}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${selectedCategory === cat
+                  ? "bg-white text-black shadow-md"
+                  : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
+                  }`}
               >
                 {cat}
               </button>
@@ -511,18 +510,18 @@ function FleetContent() {
             selectedFuel !== "ALL" ||
             selectedTransmission !== "ALL" ||
             searchQuery) && (
-            <button
-              onClick={() => {
-                setSelectedCategory("ALL");
-                setSelectedFuel("ALL");
-                setSelectedTransmission("ALL");
-                setSearchQuery("");
-              }}
-              className="text-emerald-400 hover:underline cursor-pointer"
-            >
-              Reset Filters
-            </button>
-          )}
+              <button
+                onClick={() => {
+                  setSelectedCategory("ALL");
+                  setSelectedFuel("ALL");
+                  setSelectedTransmission("ALL");
+                  setSearchQuery("");
+                }}
+                className="text-emerald-400 hover:underline cursor-pointer"
+              >
+                Reset Filters
+              </button>
+            )}
         </div>
 
         {/* Vehicle Cards Grid */}
@@ -604,11 +603,10 @@ function FleetContent() {
               return (
                 <div
                   key={carId}
-                  className={`group rounded-3xl bg-neutral-900/60 border overflow-hidden flex flex-col justify-between transition-all duration-300 ${
-                    isHighlighted
-                      ? "border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.25)] ring-1 ring-emerald-500/50"
-                      : "border-neutral-800/80 hover:border-emerald-500/40 hover:shadow-[0_10px_30px_rgba(16,185,129,0.1)]"
-                  }`}
+                  className={`group rounded-3xl bg-neutral-900/60 border overflow-hidden flex flex-col justify-between transition-all duration-300 ${isHighlighted
+                    ? "border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.25)] ring-1 ring-emerald-500/50"
+                    : "border-neutral-800/80 hover:border-emerald-500/40 hover:shadow-[0_10px_30px_rgba(16,185,129,0.1)]"
+                    }`}
                 >
                   <div>
                     {/* Image Banner */}
