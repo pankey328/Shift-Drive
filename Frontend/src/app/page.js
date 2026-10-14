@@ -445,7 +445,7 @@ export default function HomePage() {
                     </div>
 
                     <Link
-                      href={`/fleet?vehicleId=${carId}&pickupHubId=${pickupHubId || ""}&dropoffHubId=${dropoffHubId || ""}`}
+                      href={`/fleet?vehicleId=${carId}&pickupHubId=${pickupHubId || ""}&dropoffHubId=${dropoffHubId || ""}&startTime=${pickupDate && pickupTime ? `${pickupDate}T${pickupTime}:00` : ""}&endTime=${dropoffDate && dropoffTime ? `${dropoffDate}T${dropoffTime}:00` : ""}`}
                       className="px-4 py-2.5 rounded-xl bg-white text-black font-semibold text-xs hover:bg-neutral-200 transition-all flex items-center gap-1 shadow-md"
                     >
                       <span>Select</span>
