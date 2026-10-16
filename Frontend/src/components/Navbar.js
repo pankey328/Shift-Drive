@@ -23,6 +23,13 @@ export default function Navbar() {
   const router = useRouter();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isAuth = mounted && isAuthenticated;
 
   const handleLogout = () => {
     logout();
@@ -69,7 +76,7 @@ export default function Navbar() {
           >
             How It Works
           </Link>
-          {isAuthenticated && (
+          {isAuth && (
             <Link
               href="/trips"
               className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors"
@@ -82,7 +89,7 @@ export default function Navbar() {
 
         {/* Right CTA / User State */}
         <div className="hidden md:flex items-center gap-4">
-          {isAuthenticated ? (
+          {isAuth ? (
             <div className="flex items-center gap-3">
               {/* Wallet Badge */}
               <Link
@@ -250,7 +257,7 @@ export default function Navbar() {
           >
             How It Works
           </Link>
-          {isAuthenticated ? (
+          {isAuth ? (
             <div className="pt-4 border-t border-neutral-800 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-neutral-400">Signed in as</span>
