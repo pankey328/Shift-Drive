@@ -2,10 +2,18 @@
 
 import React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { Car, Shield, Clock, RotateCcw, MapPin, Mail, Phone } from "lucide-react";
 
 export default function Footer() {
+  const pathname = usePathname();
+
+  // Do not render customer footer in manager or admin portals
+  if (pathname?.startsWith("/manager") || pathname?.startsWith("/admin")) {
+    return null;
+  }
+
   return (
     <footer className="border-t border-neutral-800 bg-neutral-950 text-neutral-400 text-sm">
       {/* Feature Highlights Bar */}

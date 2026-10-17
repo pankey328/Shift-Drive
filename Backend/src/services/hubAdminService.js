@@ -1,5 +1,7 @@
 const hubAdminRepository = require("../repositories/hubAdminRepository");
 const vehicleRepository = require("../repositories/vehicleRepository");
+const hubRepository = require("../repositories/hubRepository");
+const { getTimeString, isWithinOperatingHours } = require("../utils/timeUtils");
 const { uploadImage } = require("../utils/cloudinary");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
@@ -286,6 +288,70 @@ const processWalkInRental = async ({
 
   if (end <= start) {
     const error = new Error("Rental end time must be after start time.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Validate Pickup Hub Operating Hours
+  const pickupHub = await hubRepository.findHubById(hubId);
+  if (!pickupHub) {
+    const error = new Error("Pickup station hub not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+  if (pickupHub.status !== "ACTIVE") {
+    const error = new Error(
+      `Pickup hub (${pickupHub.name}) is currently ${pickupHub.status.toLowerCase()} and cannot dispatch rentals.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const pickupTimeStr = getTimeString(start_time || start);
+  if (
+    !isWithinOperatingHours(
+      pickupTimeStr,
+      pickupHub.opening_time,
+      pickupHub.closing_time
+    )
+  ) {
+    const error = new Error(
+      `Pickup station (${pickupHub.name}) is closed at ${pickupTimeStr.slice(0, 5)}. Station operating hours are ${pickupHub.opening_time.slice(0, 5)} to ${pickupHub.closing_time.slice(0, 5)}.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Validate Dropoff Hub Operating Hours
+  const targetDropoffHubId = dropoff_hub_id || hubId;
+  const dropoffHub =
+    targetDropoffHubId === hubId
+      ? pickupHub
+      : await hubRepository.findHubById(targetDropoffHubId);
+  if (!dropoffHub) {
+    const error = new Error("Return station hub not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+  if (dropoffHub.status !== "ACTIVE") {
+    const error = new Error(
+      `Return hub (${dropoffHub.name}) is currently ${dropoffHub.status.toLowerCase()} and cannot accept returns.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const dropoffTimeStr = getTimeString(end_time || end);
+  if (
+    !isWithinOperatingHours(
+      dropoffTimeStr,
+      dropoffHub.opening_time,
+      dropoffHub.closing_time
+    )
+  ) {
+    const error = new Error(
+      `Return station (${dropoffHub.name}) is closed at ${dropoffTimeStr.slice(0, 5)}. Station operating hours are ${dropoffHub.opening_time.slice(0, 5)} to ${dropoffHub.closing_time.slice(0, 5)}. Please select a return time during station operating hours.`
+    );
     error.statusCode = 400;
     throw error;
   }

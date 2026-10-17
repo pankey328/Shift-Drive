@@ -8,6 +8,38 @@ const createVehicle = async (vehicleData) => {
 const getVehiclesByHub = async (hubId) => {
   return await Vehicle.findAll({
     where: { current_hub_id: hubId },
+    include: [
+      {
+        model: Booking,
+        as: "Bookings",
+        where: { status: "ACTIVE_TRIP" },
+        required: false,
+        include: [
+          {
+            model: User,
+            as: "Customer",
+            attributes: [
+              "userId",
+              "name",
+              "phone",
+              "email",
+              "kyc_status",
+              "kyc_document_url",
+            ],
+          },
+          {
+            model: Hub,
+            as: "PickupHub",
+            attributes: ["hubId", "name", "city"],
+          },
+          {
+            model: Hub,
+            as: "DropoffHub",
+            attributes: ["hubId", "name", "city"],
+          },
+        ],
+      },
+    ],
     order: [["createdAt", "DESC"]],
   });
 };
@@ -140,6 +172,31 @@ const getHubFleetDetailsWithSummary = async (hubId) => {
         "status",
         "gallery_urls",
         "createdAt",
+      ],
+      include: [
+        {
+          model: Booking,
+          as: "Bookings",
+          where: { status: "ACTIVE_TRIP" },
+          required: false,
+          include: [
+            {
+              model: User,
+              as: "Customer",
+              attributes: ["userId", "name", "phone", "email", "kyc_status", "kyc_document_url"],
+            },
+            {
+              model: Hub,
+              as: "PickupHub",
+              attributes: ["hubId", "name", "city"],
+            },
+            {
+              model: Hub,
+              as: "DropoffHub",
+              attributes: ["hubId", "name", "city"],
+            },
+          ],
+        },
       ],
       order: [["createdAt", "DESC"]],
     }),

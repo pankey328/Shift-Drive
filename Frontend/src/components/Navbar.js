@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   Car,
   Wallet,
@@ -21,6 +21,7 @@ import {
 export default function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -28,6 +29,11 @@ export default function Navbar() {
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Do not render customer navbar in manager or admin portals
+  if (pathname?.startsWith("/manager") || pathname?.startsWith("/admin")) {
+    return null;
+  }
 
   const isAuth = mounted && isAuthenticated;
 
