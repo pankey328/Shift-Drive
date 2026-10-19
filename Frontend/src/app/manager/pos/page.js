@@ -20,11 +20,16 @@ import {
 export default function ManagerPosPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
+  const [mounted, setMounted] = useState(false);
   const [currentHub, setCurrentHub] = useState(null);
   const [selectedHubId, setSelectedHubId] = useState("");
   const [allHubsList, setAllHubsList] = useState([]);
   const [availableVehicles, setAvailableVehicles] = useState([]);
   const [loadingVehicles, setLoadingVehicles] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // POS Form
   const [posForm, setPosForm] = useState({
@@ -252,10 +257,11 @@ export default function ManagerPosPage() {
     }
   };
 
-  if (authLoading) {
+  if (!mounted || authLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="py-24 flex flex-col items-center justify-center space-y-3">
         <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+        <span className="text-xs text-neutral-400 font-medium">Loading POS Counter Desk...</span>
       </div>
     );
   }

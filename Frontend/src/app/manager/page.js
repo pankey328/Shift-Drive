@@ -20,16 +20,23 @@ import {
   Eye,
   ZoomIn,
   Image as ImageIcon,
+  Receipt,
+  IndianRupee,
 } from "lucide-react";
 
 export default function ManagerDispatchPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
+  const [mounted, setMounted] = useState(false);
   const [currentHub, setCurrentHub] = useState(null);
   const [selectedHubId, setSelectedHubId] = useState("");
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardError, setDashboardError] = useState("");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Inspection Modal State
   const [inspectionModal, setInspectionModal] = useState(null); // { booking, type: 'PRE_TRIP' | 'POST_TRIP' }
@@ -195,10 +202,11 @@ export default function ManagerDispatchPage() {
     }
   };
 
-  if (authLoading) {
+  if (!mounted || authLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="py-24 flex flex-col items-center justify-center space-y-3">
         <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+        <span className="text-xs text-neutral-400 font-medium">Loading Dispatch Workstation...</span>
       </div>
     );
   }
@@ -318,7 +326,7 @@ export default function ManagerDispatchPage() {
                       {booking.Vehicle?.plate_number}
                     </span>
                   </div>
-                  <div className="text-neutral-400 space-y-0.5">
+                  <div className="text-neutral-400 space-y-1">
                     <p>
                       Driver: <strong className="text-white">{booking.Customer?.name}</strong> ({booking.Customer?.phone})
                     </p>
@@ -329,6 +337,24 @@ export default function ManagerDispatchPage() {
                         timeStyle: "short",
                       })}
                     </p>
+                    {(() => {
+                      const hoursLate = Math.max(
+                        1,
+                        Math.ceil((Date.now() - new Date(booking.end_time).getTime()) / (1000 * 60 * 60))
+                      );
+                      const penalty = hoursLate * 1000;
+                      return (
+                        <div className="flex items-center justify-between text-[11px] bg-red-950/80 border border-red-800/60 rounded-xl px-2.5 py-1.5 mt-1 text-red-300">
+                          <span className="font-medium flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-red-400" />
+                            Overdue Duration:
+                          </span>
+                          <span className="font-bold text-red-200 font-mono">
+                            +{hoursLate}h late • ₹{penalty.toLocaleString("en-IN")} Due
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -562,6 +588,78 @@ export default function ManagerDispatchPage() {
                 <span>{inspectionSuccess}</span>
               </div>
             )}
+
+            {/* OVERDUE RETURN PENALTY SETTLEMENT BREAKDOWN */}
+            {inspectionModal.type === "POST_TRIP" &&
+              inspectionModal.booking?.end_time &&
+              new Date() > new Date(inspectionModal.booking.end_time) && (() => {
+                const hoursLate = Math.max(
+                  1,
+                  Math.ceil((Date.now() - new Date(inspectionModal.booking.end_time).getTime()) / (1000 * 60 * 60))
+                );
+                const lateFeeAmount = hoursLate * 1000;
+                const isPosBooking = Boolean(
+                  inspectionModal.booking?.incident_notes?.toLowerCase().includes("pos") ||
+                  inspectionModal.booking?.incident_notes?.toLowerCase().includes("walk-in")
+                );
+
+                return (
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-red-950/60 via-red-900/20 to-neutral-950 border border-red-700/60 space-y-3 shadow-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ShieldAlert className="w-5 h-5 text-red-400" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-red-200">
+                          Overdue Return Penalty Settlement
+                        </span>
+                      </div>
+                      <span className="text-xs font-black font-mono px-3 py-1 rounded-full bg-red-900/80 text-white border border-red-600 shadow-sm">
+                        ₹{lateFeeAmount.toLocaleString("en-IN")} Penalty Due
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                      <div className="p-2.5 rounded-xl bg-black/60 border border-neutral-800">
+                        <span className="text-[10px] text-neutral-400 block font-medium">Scheduled Return</span>
+                        <span className="text-white font-semibold">
+                          {new Date(inspectionModal.booking.end_time).toLocaleTimeString("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            day: "numeric",
+                            month: "short",
+                          })}
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-black/60 border border-neutral-800">
+                        <span className="text-[10px] text-neutral-400 block font-medium">Time Overdue</span>
+                        <span className="text-red-400 font-bold">
+                          +{hoursLate} {hoursLate === 1 ? "Hour" : "Hours"} (₹1,000/hr)
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-black/60 border border-neutral-800 col-span-2 sm:col-span-1">
+                        <span className="text-[10px] text-neutral-400 block font-medium">Payment Protocol</span>
+                        <span className="text-emerald-400 font-bold">
+                          {isPosBooking ? "Counter Cash / UPI / Card" : "Wallet Auto-Debit"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-red-950/70 border border-red-800/50 text-[11px] text-red-200 flex items-start gap-2.5">
+                      <Receipt className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        {isPosBooking ? (
+                          <span>
+                            <strong>Counter Action Required:</strong> Driver booked at walk-in POS counter. Please collect <strong className="text-white">₹{lateFeeAmount.toLocaleString("en-IN")}</strong> via Cash, UPI QR code, or Card terminal before completing vehicle return check-in.
+                          </span>
+                        ) : (
+                          <span>
+                            <strong>Automated Settlement:</strong> <strong className="text-white">₹{lateFeeAmount.toLocaleString("en-IN")}</strong> will be automatically charged to <strong className="text-white">{inspectionModal.booking.Customer?.name || "driver"}</strong>&apos;s registered ShiftDrive Wallet upon completing this return checklist.
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
             {/* PRE-TRIP HANDOVER COMPARISON REFERENCE */}
             {inspectionModal.type === "POST_TRIP" && (

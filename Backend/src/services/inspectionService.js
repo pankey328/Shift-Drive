@@ -9,6 +9,7 @@ const {
   updateBookingStatus,
 } = require("../repositories/bookingRepository");
 const { processFinancialMovement } = require("../repositories/walletRepository");
+const { WalletTransaction } = require("../models");
 const vehicleRepository = require("../repositories/vehicleRepository");
 const userRepository = require("../repositories/userRepository");
 const { handleMaintenanceEscalation } = require("./escalationService");
@@ -74,6 +75,30 @@ const submitInspection = async (
     // Re-assign vehicle hub to dropoff_hub_id for one-way rentals
     if (booking.dropoff_hub_id) {
       await vehicleRepository.transferVehicleHub(booking.vehicle_id, booking.dropoff_hub_id);
+    }
+
+    // Assess Late Return Penalty if returned after scheduled end_time
+    const endTime = new Date(booking.end_time);
+    if (Date.now() > endTime.getTime()) {
+      const hoursLate = Math.max(
+        1,
+        Math.ceil((Date.now() - endTime.getTime()) / (1000 * 60 * 60)),
+      );
+      const lateFeeAmount = hoursLate * 1000;
+
+      const existingLateFee = await WalletTransaction.findOne({
+        where: { booking_id: bookingId, type: "LATE_FEE" },
+      });
+
+      if (!existingLateFee) {
+        await processFinancialMovement({
+          userId: booking.user_id,
+          amount: -lateFeeAmount,
+          type: "LATE_FEE",
+          description: `Late return penalty (${hoursLate} hours)`,
+          bookingId: booking.bookingId || booking.id,
+        });
+      }
     }
 
     if (isDamaged && damage_severity) {

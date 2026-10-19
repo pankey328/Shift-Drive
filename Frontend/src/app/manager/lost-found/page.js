@@ -16,10 +16,15 @@ import {
 export default function ManagerLostFoundPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
+  const [mounted, setMounted] = useState(false);
   const [currentHub, setCurrentHub] = useState(null);
   const [selectedHubId, setSelectedHubId] = useState("");
   const [lostItems, setLostItems] = useState([]);
   const [loadingLost, setLoadingLost] = useState(true);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Modals
   const [showLostModal, setShowLostModal] = useState(false);
@@ -149,10 +154,11 @@ export default function ManagerLostFoundPage() {
     }
   };
 
-  if (authLoading) {
+  if (!mounted || authLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+      <div className="py-24 flex flex-col items-center justify-center space-y-3">
+        <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
+        <span className="text-xs text-neutral-400 font-medium">Opening Station Vault Registry...</span>
       </div>
     );
   }

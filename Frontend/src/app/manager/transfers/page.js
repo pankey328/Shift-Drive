@@ -15,12 +15,17 @@ import {
 export default function ManagerTransfersPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
+  const [mounted, setMounted] = useState(false);
   const [currentHub, setCurrentHub] = useState(null);
   const [selectedHubId, setSelectedHubId] = useState("");
   const [transfers, setTransfers] = useState([]);
   const [loadingTransfers, setLoadingTransfers] = useState(true);
   const [availableVehicles, setAvailableVehicles] = useState([]);
   const [allHubsList, setAllHubsList] = useState([]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Modal
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -139,10 +144,11 @@ export default function ManagerTransfersPage() {
     }
   };
 
-  if (authLoading) {
+  if (!mounted || authLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="py-24 flex flex-col items-center justify-center space-y-3">
         <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+        <span className="text-xs text-neutral-400 font-medium">Loading Transfer Logs...</span>
       </div>
     );
   }

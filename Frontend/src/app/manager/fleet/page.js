@@ -27,6 +27,7 @@ import {
 export default function ManagerFleetPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
+  const [mounted, setMounted] = useState(false);
   const [currentHub, setCurrentHub] = useState(null);
   const [selectedHubId, setSelectedHubId] = useState("");
   const [lotVehicles, setLotVehicles] = useState([]);
@@ -34,6 +35,10 @@ export default function ManagerFleetPage() {
   const [fleetFilter, setFleetFilter] = useState("ALL");
   const [allHubsList, setAllHubsList] = useState([]);
   const [updatingVehicleId, setUpdatingVehicleId] = useState(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Active Trip Dossier Modal State
   const [selectedTripDossier, setSelectedTripDossier] = useState(null);
@@ -153,10 +158,11 @@ export default function ManagerFleetPage() {
     }
   };
 
-  if (authLoading) {
+  if (!mounted || authLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="py-24 flex flex-col items-center justify-center space-y-3">
         <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+        <span className="text-xs text-neutral-400 font-medium">Scanning Lot Inventory...</span>
       </div>
     );
   }

@@ -30,7 +30,6 @@ export default function Navbar() {
     setMounted(true);
   }, []);
 
-  // Do not render customer navbar in manager or admin portals
   if (pathname?.startsWith("/manager") || pathname?.startsWith("/admin")) {
     return null;
   }
