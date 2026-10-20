@@ -22,6 +22,10 @@ import {
   FileText,
   CheckCircle2,
   Wrench,
+  Upload,
+  Fuel,
+  Armchair,
+  IndianRupee,
 } from "lucide-react";
 
 export default function ManagerFleetPage() {
@@ -53,6 +57,23 @@ export default function ManagerFleetPage() {
     reason: "Fleet Rebalancing",
   });
   const [submittingTransfer, setSubmittingTransfer] = useState(false);
+
+  // Add Vehicle to Lot Modal State
+  const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
+  const [addVehicleForm, setAddVehicleForm] = useState({
+    make: "",
+    model: "",
+    vehicle_class: "SEDAN",
+    plate_number: "",
+    base_daily_rate: "",
+    seats: "5",
+    fuel_type: "Petrol",
+    transmission: "Automatic",
+  });
+  const [vehicleImages, setVehicleImages] = useState([]);
+  const [submittingVehicle, setSubmittingVehicle] = useState(false);
+  const [addVehicleError, setAddVehicleError] = useState("");
+  const [addVehicleSuccess, setAddVehicleSuccess] = useState("");
 
   // Resolve Station Hub
   const resolveStationHub = useCallback(async () => {
@@ -158,6 +179,80 @@ export default function ManagerFleetPage() {
     }
   };
 
+  // Add New Vehicle to Lot Handler
+  const handleAddVehicle = async (e) => {
+    e.preventDefault();
+    setAddVehicleError("");
+    setAddVehicleSuccess("");
+
+    if (
+      !addVehicleForm.make.trim() ||
+      !addVehicleForm.model.trim() ||
+      !addVehicleForm.plate_number.trim() ||
+      !addVehicleForm.base_daily_rate
+    ) {
+      setAddVehicleError("Make, Model, License Plate Number, and Daily Rate are required.");
+      return;
+    }
+
+    setSubmittingVehicle(true);
+    try {
+      const payload = {
+        make: addVehicleForm.make.trim(),
+        model: addVehicleForm.model.trim(),
+        vehicle_class: addVehicleForm.vehicle_class,
+        plate_number: addVehicleForm.plate_number.trim().toUpperCase(),
+        base_daily_rate: parseFloat(addVehicleForm.base_daily_rate),
+        seats: parseInt(addVehicleForm.seats, 10) || 5,
+        fuel_type: addVehicleForm.fuel_type,
+        transmission: addVehicleForm.transmission,
+        current_hub_id: selectedHubId || currentHub?.hubId,
+      };
+
+      const res = await api.post("/vehicles", payload);
+      if (res.data?.success) {
+        const newCar = res.data.data;
+        const newVehicleId = newCar?.vehicleId;
+
+        // Upload gallery images if any were selected
+        if (vehicleImages.length > 0 && newVehicleId) {
+          const formData = new FormData();
+          vehicleImages.forEach((img) => formData.append("images", img));
+          await api.post(`/vehicles/${newVehicleId}/images`, formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+        }
+
+        setAddVehicleSuccess(
+          `Vehicle ${payload.make} ${payload.model} (${payload.plate_number}) successfully registered on lot!`
+        );
+
+        setTimeout(() => {
+          setShowAddVehicleModal(false);
+          setAddVehicleForm({
+            make: "",
+            model: "",
+            vehicle_class: "SEDAN",
+            plate_number: "",
+            base_daily_rate: "",
+            seats: "5",
+            fuel_type: "Petrol",
+            transmission: "Automatic",
+          });
+          setVehicleImages([]);
+          setAddVehicleSuccess("");
+          fetchStationFleet();
+        }, 1400);
+      }
+    } catch (err) {
+      setAddVehicleError(
+        err.response?.data?.message || "Failed to onboard new vehicle to station lot."
+      );
+    } finally {
+      setSubmittingVehicle(false);
+    }
+  };
+
   if (!mounted || authLoading) {
     return (
       <div className="py-24 flex flex-col items-center justify-center space-y-3">
@@ -191,15 +286,26 @@ export default function ManagerFleetPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={fetchStationFleet}
-          disabled={loadingFleet}
-          className="p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700 transition-colors cursor-pointer self-start sm:self-auto"
-          title="Refresh Fleet Inventory"
-        >
-          <RefreshCw className={`w-4 h-4 ${loadingFleet ? "animate-spin text-blue-400" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={fetchStationFleet}
+            disabled={loadingFleet}
+            className="p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700 transition-colors cursor-pointer"
+            title="Refresh Fleet Inventory"
+          >
+            <RefreshCw className={`w-4 h-4 ${loadingFleet ? "animate-spin text-blue-400" : ""}`} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowAddVehicleModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/25 transition-all cursor-pointer"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Add Vehicle to Lot</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter Tabs & Counters */}
@@ -648,6 +754,219 @@ export default function ManagerFleetPage() {
                 <p>This car is on an active trip. Details are being synchronized from the dispatch desk.</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ADD VEHICLE TO LOT MODAL */}
+      {showAddVehicleModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-full max-w-xl p-6 space-y-5 my-8 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-blue-600/10 text-blue-400 border border-blue-500/20">
+                  <Car className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Add Vehicle to Station Lot</h3>
+                  <p className="text-xs text-neutral-400">
+                    Register a new fleet asset stationed at {currentHub?.name || "this Hub"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddVehicleModal(false)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {addVehicleError && (
+              <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-800/40 text-xs text-red-400 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{addVehicleError}</span>
+              </div>
+            )}
+
+            {addVehicleSuccess && (
+              <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-xs text-emerald-400 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                <span>{addVehicleSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAddVehicle} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-neutral-300">
+                    Make / Manufacturer <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Hyundai, Tata, Mahindra"
+                    value={addVehicleForm.make}
+                    onChange={(e) => setAddVehicleForm({ ...addVehicleForm, make: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-neutral-300">
+                    Model & Trim <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Creta SX, Harrier XZ+"
+                    value={addVehicleForm.model}
+                    onChange={(e) => setAddVehicleForm({ ...addVehicleForm, model: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-neutral-300">
+                    License Plate Number <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. RJ14-CR-9999"
+                    value={addVehicleForm.plate_number}
+                    onChange={(e) => setAddVehicleForm({ ...addVehicleForm, plate_number: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white uppercase font-mono placeholder-neutral-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-neutral-300">
+                    Base Daily Rate (₹/day) <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="100"
+                    step="50"
+                    required
+                    placeholder="e.g. 2500"
+                    value={addVehicleForm.base_daily_rate}
+                    onChange={(e) => setAddVehicleForm({ ...addVehicleForm, base_daily_rate: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-neutral-300">Vehicle Category</label>
+                  <select
+                    value={addVehicleForm.vehicle_class}
+                    onChange={(e) => setAddVehicleForm({ ...addVehicleForm, vehicle_class: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="HATCHBACK">HATCHBACK</option>
+                    <option value="SEDAN">SEDAN</option>
+                    <option value="SUV">SUV</option>
+                    <option value="LUXURY">LUXURY</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-neutral-300">Fuel Type</label>
+                  <select
+                    value={addVehicleForm.fuel_type}
+                    onChange={(e) => setAddVehicleForm({ ...addVehicleForm, fuel_type: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="Petrol">Petrol</option>
+                    <option value="Diesel">Diesel</option>
+                    <option value="Electric">Electric</option>
+                    <option value="Hybrid">Hybrid</option>
+                    <option value="CNG">CNG</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-neutral-300">Transmission</label>
+                  <select
+                    value={addVehicleForm.transmission}
+                    onChange={(e) => setAddVehicleForm({ ...addVehicleForm, transmission: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="Automatic">Automatic</option>
+                    <option value="Manual">Manual</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Station Hub Assignment */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-neutral-300">Assigned Station Hub</label>
+                <div className="px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-neutral-300 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-3.5 h-3.5 text-blue-400" />
+                    <span className="font-semibold text-white">{currentHub?.name || "Assigned Station"}</span>
+                    <span className="text-neutral-500">({currentHub?.city})</span>
+                  </div>
+                  <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Lot Stationed</span>
+                </div>
+              </div>
+
+              {/* Photos Upload */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-neutral-300">
+                  Vehicle Gallery Photos (Up to 5 images)
+                </label>
+                <div className="p-4 rounded-2xl border-2 border-dashed border-neutral-800 hover:border-neutral-700 bg-neutral-950 text-center space-y-2 cursor-pointer relative">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => setVehicleImages(Array.from(e.target.files || []).slice(0, 5))}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <Upload className="w-6 h-6 text-neutral-500 mx-auto" />
+                  <p className="text-xs text-neutral-400">
+                    {vehicleImages.length > 0
+                      ? `${vehicleImages.length} image(s) selected for upload`
+                      : "Drag & drop or tap to select car photos"}
+                  </p>
+                  <p className="text-[10px] text-neutral-600">Front, Rear, Side angles recommended</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddVehicleModal(false)}
+                  disabled={submittingVehicle}
+                  className="flex-1 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingVehicle}
+                  className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {submittingVehicle ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Onboarding Vehicle...</span>
+                    </>
+                  ) : (
+                    <>
+                      <PlusCircle className="w-4 h-4" />
+                      <span>Onboard Vehicle to Lot</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -2,8 +2,17 @@ const vehicleService = require("../services/vehicleService");
 
 const addVehicle = async (req, res) => {
   try {
-    const { make, model, plate_number, base_daily_rate, current_hub_id } =
-      req.body;
+    const {
+      make,
+      model,
+      plate_number,
+      base_daily_rate,
+      current_hub_id,
+      vehicle_class,
+      seats,
+      fuel_type,
+      transmission,
+    } = req.body;
 
     if (!(make && model && plate_number && base_daily_rate && current_hub_id)) {
       return res.status(400).json({
@@ -17,6 +26,10 @@ const addVehicle = async (req, res) => {
       plate_number,
       base_daily_rate,
       current_hub_id,
+      vehicle_class,
+      seats,
+      fuel_type,
+      transmission,
     });
 
     return res.status(201).json({ success: true, data: vehicle });

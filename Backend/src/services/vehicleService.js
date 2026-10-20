@@ -10,6 +10,9 @@ const addNewVehicle = async ({
   base_daily_rate,
   current_hub_id,
   vehicle_class = "SEDAN",
+  seats = 5,
+  fuel_type = "Petrol",
+  transmission = "Automatic",
 }) => {
   return await vehicleRepository.createVehicle({
     make,
@@ -18,6 +21,9 @@ const addNewVehicle = async ({
     base_daily_rate,
     current_hub_id,
     vehicle_class,
+    seats,
+    fuel_type,
+    transmission,
   });
 };
 
