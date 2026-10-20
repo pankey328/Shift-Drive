@@ -321,11 +321,10 @@ export default function ManagerFleetPage() {
               key={tab.value}
               type="button"
               onClick={() => setFleetFilter(tab.value)}
-              className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-                fleetFilter === tab.value
-                  ? "bg-white text-black font-bold shadow-md"
-                  : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
-              }`}
+              className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${fleetFilter === tab.value
+                ? "bg-white text-black font-bold shadow-md"
+                : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
+                }`}
             >
               {tab.label}
             </button>
@@ -362,13 +361,12 @@ export default function ManagerFleetPage() {
                     {car.vehicle_class || "STANDARD"}
                   </span>
                   <span
-                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      car.status === "ACTIVE"
-                        ? "bg-emerald-950/60 border border-emerald-800 text-emerald-400"
-                        : car.status === "IN_USE"
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${car.status === "ACTIVE"
+                      ? "bg-emerald-950/60 border border-emerald-800 text-emerald-400"
+                      : car.status === "IN_USE"
                         ? "bg-blue-950/60 border border-blue-800 text-blue-400"
                         : "bg-amber-950/60 border border-amber-800 text-amber-400"
-                    }`}
+                      }`}
                   >
                     {car.status === "ACTIVE" ? "READY ON LOT" : car.status}
                   </span>

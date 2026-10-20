@@ -9,18 +9,16 @@ const {
 } = require("../controllers/adminUserController");
 
 router.use(protect);
-router.use(authorize("SUPERADMIN"));
-
 // List pending customer KYC submissions
-router.get("/kyc/pending", fetchPendingKyc);
+router.get("/kyc/pending", authorize("SUPERADMIN"), fetchPendingKyc);
 
-// Approve or reject customer KYC
-router.patch("/:userId/kyc", handleReviewKyc);
+// Approve or reject customer KYC (Superadmin or Hub Manager at counter)
+router.patch("/:userId/kyc", authorize("SUPERADMIN", "HUB_ADMIN"), handleReviewKyc);
 
 // Blacklist, suspend or reactivate user account
-router.patch("/:userId/status", handleToggleAccount);
+router.patch("/:userId/status", authorize("SUPERADMIN"), handleToggleAccount);
 
 // List all users with filtering
-router.get("/", fetchUsers);
+router.get("/", authorize("SUPERADMIN"), fetchUsers);
 
 module.exports = router;

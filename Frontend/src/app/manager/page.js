@@ -22,6 +22,9 @@ import {
   Image as ImageIcon,
   Receipt,
   IndianRupee,
+  ShieldCheck,
+  FileText,
+  UserCheck,
 } from "lucide-react";
 
 export default function ManagerDispatchPage() {
@@ -53,6 +56,10 @@ export default function ManagerDispatchPage() {
   const [preTripReport, setPreTripReport] = useState(null);
   const [loadingPreTrip, setLoadingPreTrip] = useState(false);
   const [selectedZoomPhoto, setSelectedZoomPhoto] = useState(null);
+
+  // Counter KYC Verification State
+  const [approvingKyc, setApprovingKyc] = useState(false);
+  const [kycActionMessage, setKycActionMessage] = useState("");
 
   // Resolve Station Hub Details
   const resolveStationHub = useCallback(async (overrideHubId = null) => {
@@ -199,6 +206,31 @@ export default function ManagerDispatchPage() {
       );
     } finally {
       setSubmittingInspection(false);
+    }
+  };
+
+  // Fast-track counter KYC verification handler
+  const handleApproveKycAtCounter = async (userId) => {
+    setApprovingKyc(true);
+    setKycActionMessage("");
+    try {
+      const res = await api.patch(`/admin/users/${userId}/kyc`, {
+        status: "VERIFIED",
+      });
+      if (res.data?.success) {
+        setKycActionMessage("KYC Document Verified and Approved at Station Desk!");
+        if (inspectionModal?.booking?.Customer) {
+          inspectionModal.booking.Customer.kyc_status = "VERIFIED";
+        }
+        setTimeout(() => {
+          setKycActionMessage("");
+          fetchDashboard();
+        }, 1200);
+      }
+    } catch (err) {
+      setKycActionMessage(err.response?.data?.message || "Failed to update customer KYC status.");
+    } finally {
+      setApprovingKyc(false);
     }
   };
 
@@ -424,7 +456,7 @@ export default function ManagerDispatchPage() {
                     </span>
                   </div>
 
-                  <div className="p-3 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-1 text-xs">
+                  <div className="p-3 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-1.5 text-xs">
                     <div className="flex justify-between text-neutral-400">
                       <span>Customer:</span>
                       <span className="text-white font-medium">{booking.Customer?.name}</span>
@@ -442,6 +474,38 @@ export default function ManagerDispatchPage() {
                         })}
                       </span>
                     </div>
+
+                    {/* KYC Verification Badge */}
+                    <div className="flex items-center justify-between pt-1.5 border-t border-neutral-900">
+                      <span className="text-neutral-400">KYC Status:</span>
+                      {booking.Customer?.kyc_status === "VERIFIED" ? (
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-full">
+                          <CheckCircle2 className="w-3 h-3" />
+                          KYC Verified
+                        </span>
+                      ) : booking.Customer?.kyc_status === "REJECTED" ? (
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-950/60 border border-red-800/60 px-2 py-0.5 rounded-full">
+                          <ShieldAlert className="w-3 h-3" />
+                          KYC Rejected
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2 py-0.5 rounded-full animate-pulse">
+                          <Clock className="w-3 h-3" />
+                          KYC Pending
+                        </span>
+                      )}
+                    </div>
+
+                    {booking.Customer?.kyc_document_url && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedZoomPhoto(booking.Customer.kyc_document_url)}
+                        className="w-full mt-1 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-[11px] font-medium text-blue-400 flex items-center justify-center gap-1 transition-colors cursor-pointer border border-neutral-800/80"
+                      >
+                        <FileText className="w-3 h-3" />
+                        <span>Inspect Driving License Photo</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -586,6 +650,81 @@ export default function ManagerDispatchPage() {
               <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-xs text-emerald-400 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                 <span>{inspectionSuccess}</span>
+              </div>
+            )}
+
+            {/* PRE-TRIP DRIVER KYC & IDENTITY CHECK */}
+            {inspectionModal.type === "PRE_TRIP" && (
+              <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Driver Identity & License Verification</span>
+                  </span>
+                  {inspectionModal.booking.Customer?.kyc_status === "VERIFIED" ? (
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-950 border border-emerald-800 text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      KYC Approved
+                    </span>
+                  ) : inspectionModal.booking.Customer?.kyc_status === "REJECTED" ? (
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-red-950 border border-red-800 text-red-400 flex items-center gap-1">
+                      <ShieldAlert className="w-3 h-3" />
+                      KYC Rejected
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-950 border border-amber-800 text-amber-400 flex items-center gap-1 animate-pulse">
+                      <Clock className="w-3 h-3" />
+                      Pending Counter Review
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-neutral-900/60 p-3 rounded-xl border border-neutral-800/80">
+                  <div>
+                    <span className="text-white font-bold block">{inspectionModal.booking.Customer?.name}</span>
+                    <span className="text-neutral-400 text-[11px] block">
+                      {inspectionModal.booking.Customer?.phone} • {inspectionModal.booking.Customer?.email}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {inspectionModal.booking.Customer?.kyc_document_url ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedZoomPhoto(inspectionModal.booking.Customer.kyc_document_url)}
+                        className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-blue-400 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                        <span>View DL Photo</span>
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-neutral-500 italic">No license image on file</span>
+                    )}
+
+                    {inspectionModal.booking.Customer?.kyc_status !== "VERIFIED" && (
+                      <button
+                        type="button"
+                        onClick={() => handleApproveKycAtCounter(inspectionModal.booking.Customer?.userId)}
+                        disabled={approvingKyc}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-600/20 disabled:opacity-50"
+                      >
+                        {approvingKyc ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <UserCheck className="w-3.5 h-3.5" />
+                        )}
+                        <span>Approve KYC at Desk</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {kycActionMessage && (
+                  <p className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {kycActionMessage}
+                  </p>
+                )}
               </div>
             )}
 
