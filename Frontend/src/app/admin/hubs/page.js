@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import api from "@/api";
+import Link from "next/link";
 import {
   Building2,
   PlusCircle,
@@ -15,6 +16,9 @@ import {
   X,
   UserCheck,
   ShieldAlert,
+  Compass,
+  ArrowRight,
+  ExternalLink,
 } from "lucide-react";
 
 export default function AdminHubsPage() {
@@ -145,13 +149,13 @@ export default function AdminHubsPage() {
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-purple-400 mb-1">
             <Building2 className="w-4 h-4" />
-            <span>Infrastructure Management</span>
+            <span>Infrastructure Directory</span>
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight">
             Station Hubs & Bays Directory
           </h1>
           <p className="text-xs text-neutral-400 mt-1">
-            Provision new station locations, configure operating hours, and assign verified station managers.
+            Provision new station locations, configure operating hours, assign managers, and jump into station telemetry.
           </p>
         </div>
 
@@ -160,11 +164,20 @@ export default function AdminHubsPage() {
             type="button"
             onClick={fetchData}
             disabled={loading}
-            className="p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white"
+            className="p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
             title="Refresh Stations"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-purple-400" : ""}`} />
           </button>
+
+          <Link
+            href="/admin/hub-info"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold text-xs transition-colors"
+          >
+            <Compass className="w-4 h-4 text-purple-400" />
+            <span>Hub Info & Telemetry</span>
+          </Link>
+
           <button
             type="button"
             onClick={() => setShowCreateModal(true)}
@@ -189,7 +202,7 @@ export default function AdminHubsPage() {
           <button
             type="button"
             onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold inline-block"
+            className="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold inline-block cursor-pointer"
           >
             Provision First Hub
           </button>
@@ -199,7 +212,7 @@ export default function AdminHubsPage() {
           {hubs.map((hub) => (
             <div
               key={hub.hubId}
-              className="p-5 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-4 flex flex-col justify-between shadow-sm"
+              className="p-5 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-4 flex flex-col justify-between shadow-sm hover:border-neutral-700 transition-colors"
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -251,19 +264,31 @@ export default function AdminHubsPage() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setAssigningHub(hub);
-                  setSelectedManagerId(hub.manager_id || "");
-                  setAssignError("");
-                  setAssignSuccess("");
-                }}
-                className="w-full py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <UserCheck className="w-3.5 h-3.5 text-purple-400" />
-                <span>Assign / Reassign Manager</span>
-              </button>
+              {/* Action Buttons */}
+              <div className="space-y-2 pt-2">
+                <Link
+                  href={`/admin/hub-info?hubId=${hub.hubId}`}
+                  className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-purple-600/20"
+                >
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>Inspect Hub Info & Fleet</span>
+                  <ArrowRight className="w-3.5 h-3.5 ml-0.5" />
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAssigningHub(hub);
+                    setSelectedManagerId(hub.manager_id || "");
+                    setAssignError("");
+                    setAssignSuccess("");
+                  }}
+                  className="w-full py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-semibold transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Assign / Reassign Manager</span>
+                </button>
+              </div>
             </div>
           ))}
         </div>

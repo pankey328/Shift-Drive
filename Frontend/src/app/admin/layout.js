@@ -7,6 +7,7 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Building2,
+  Compass,
   ShieldCheck,
   Users,
   LogOut,
@@ -25,7 +26,7 @@ export default function SuperadminLayout({ children }) {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Role Gate: Only SUPERADMIN allowed
+  // Only SUPERADMIN allowed
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       router.push("/login?redirect=/admin");
@@ -50,9 +51,16 @@ export default function SuperadminLayout({ children }) {
     {
       label: "Station Hubs",
       href: "/admin/hubs",
-      exact: false,
+      exact: true,
       icon: Building2,
-      description: "Stations, bays & managers",
+      description: "Directory & provisioning",
+    },
+    {
+      label: "Hub Info",
+      href: "/admin/hub-info",
+      exact: false,
+      icon: Compass,
+      description: "Live station telemetry & fleet",
     },
     {
       label: "KYC Verification",
@@ -93,9 +101,8 @@ export default function SuperadminLayout({ children }) {
 
       {/* Main Persistent Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 bg-neutral-900 border-r border-neutral-800 flex flex-col justify-between transition-transform duration-300 lg:static lg:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-neutral-900 border-r border-neutral-800 flex flex-col justify-between transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          }`}
       >
         <div className="flex flex-col h-full">
           {/* Header Brand */}
@@ -142,16 +149,14 @@ export default function SuperadminLayout({ children }) {
                   key={item.href}
                   href={item.href}
                   onClick={() => setSidebarOpen(false)}
-                  className={`flex items-start gap-3 p-3 rounded-2xl transition-all ${
-                    active
-                      ? "bg-purple-600/20 text-purple-300 border border-purple-500/40 shadow-sm"
-                      : "text-neutral-400 hover:text-white hover:bg-neutral-800/60"
-                  }`}
+                  className={`flex items-start gap-3 p-3 rounded-2xl transition-all ${active
+                    ? "bg-purple-600/20 text-purple-300 border border-purple-500/40 shadow-sm"
+                    : "text-neutral-400 hover:text-white hover:bg-neutral-800/60"
+                    }`}
                 >
                   <Icon
-                    className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
-                      active ? "text-purple-400" : "text-neutral-500"
-                    }`}
+                    className={`w-5 h-5 mt-0.5 flex-shrink-0 ${active ? "text-purple-400" : "text-neutral-500"
+                      }`}
                   />
                   <div>
                     <span className="text-xs font-bold block">{item.label}</span>
