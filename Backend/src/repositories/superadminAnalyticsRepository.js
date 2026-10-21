@@ -116,9 +116,10 @@ const getManagerPerformances = async () => {
 
 // FLEET UTILIZATION AND OPERATIONAL KPI
 const getFleetUtilization = async () => {
-  const [totalVehicles, activeTrips, maintenance] = await Promise.all([
+  const [totalVehicles, activeTrips, readyCars, maintenance] = await Promise.all([
     Vehicle.count({ where: { status: { [Op.ne]: "RETIRED" } } }),
-    Booking.count({ where: { status: "ACTIVE_TRIP" } }),
+    Booking.count({ where: { status: { [Op.in]: ["ACTIVE_TRIP", "EMERGENCY_HOLD"] } } }),
+    Vehicle.count({ where: { status: "ACTIVE" } }),
     Vehicle.count({ where: { status: "MAINTENANCE" } }),
   ]);
 
@@ -130,6 +131,7 @@ const getFleetUtilization = async () => {
   return {
     total_vehicles: totalVehicles,
     active_trips: activeTrips,
+    ready_on_lot: readyCars,
     maintenance_vehicles: maintenance,
     utilization_rate_pct: utilizationRate,
   };
