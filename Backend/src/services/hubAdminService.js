@@ -42,7 +42,7 @@ const generateHubDashboard = async (hubId) => {
   const endOfDay = new Date(new Date().setHours(23, 59, 59, 999));
   const currentTime = new Date();
 
-  const [schedule, fleetStats] = await Promise.all([
+  const [schedule, fleetStats, shiftSettlement, hub] = await Promise.all([
     hubAdminRepository.getDailySchedule(
       hubId,
       startOfDay,
@@ -50,22 +50,59 @@ const generateHubDashboard = async (hubId) => {
       currentTime,
     ),
     hubAdminRepository.getHubFleetStats(hubId),
+    hubAdminRepository.getShiftSettlement(hubId, startOfDay, endOfDay),
+    hubRepository.findHubById(hubId),
   ]);
+
+  const stationCapacity = hub?.capacity || 20;
+  const readyToRent = fleetStats["ACTIVE"] || 0;
+  const inMaintenance = fleetStats["MAINTENANCE"] || 0;
+  const inUse = fleetStats["IN_USE"] || 0;
+  const totalOnLot = readyToRent + inMaintenance;
+  const availableBays = Math.max(0, stationCapacity - totalOnLot);
+  const occupancyRate = Math.min(100, Math.round((totalOnLot / stationCapacity) * 100));
+
+  let rebalanceStatus = "BALANCED";
+  let rebalanceMessage = "Station parking capacity and lot inventory are within optimal operational thresholds.";
+
+  if (occupancyRate >= 85) {
+    rebalanceStatus = "OVERCAPACITY_RISK";
+    rebalanceMessage = `Station lot is at ${occupancyRate}% capacity (${totalOnLot}/${stationCapacity} bays occupied). Deadheading transfer recommended to prevent return congestion.`;
+  } else if (readyToRent <= 2) {
+    rebalanceStatus = "LOW_STOCK_RISK";
+    rebalanceMessage = `Low ready fleet: Only ${readyToRent} vehicle(s) ready for dispatch. Request inbound fleet transfer from nearby station.`;
+  }
 
   return {
     hub_id: hubId,
+    hub_details: hub
+      ? {
+          name: hub.name,
+          city: hub.city,
+          address: hub.address,
+          capacity: stationCapacity,
+          opening_time: hub.opening_time,
+          closing_time: hub.closing_time,
+        }
+      : null,
     action_desk: {
       pending_pickups: schedule.pickups,
       pending_dropoffs: schedule.dropoffs,
       action_required_overdue: schedule.overdue,
+      emergency_alerts: schedule.emergencies || [],
     },
     local_fleet_health: {
-      ready_to_rent: fleetStats["ACTIVE"] || 0,
-      in_maintenance: fleetStats["MAINTENANCE"] || 0,
-      in_use: fleetStats["IN_USE"] || 0,
-      total_on_lot:
-        (fleetStats["ACTIVE"] || 0) + (fleetStats["MAINTENANCE"] || 0),
+      ready_to_rent: readyToRent,
+      in_maintenance: inMaintenance,
+      in_use: inUse,
+      total_on_lot: totalOnLot,
+      station_capacity: stationCapacity,
+      available_bays: availableBays,
+      occupancy_rate: occupancyRate,
+      rebalance_status: rebalanceStatus,
+      rebalance_message: rebalanceMessage,
     },
+    shift_settlement: shiftSettlement,
   };
 };
 
@@ -259,9 +296,9 @@ const processWalkInRental = async ({
     });
   }
 
-  const { vehicleId, start_time, end_time, total_price, dropoff_hub_id } =
-    bookingData;
-  const vehicle = await vehicleRepository.findVehicleById(vehicleId);
+  const { start_time, end_time, total_price, dropoff_hub_id } = bookingData;
+  const targetVehicleId = bookingData.vehicleId || bookingData.vehicle_id;
+  const vehicle = await vehicleRepository.findVehicleById(targetVehicleId);
 
   if (!vehicle) {
     const error = new Error("Requested vehicle not found.");
@@ -486,6 +523,21 @@ const claimLostItem = async (itemId, { claimed_by_name, claimed_by_phone }) => {
   });
 };
 
+// Emergency Incident Resolution
+const resolveStationEmergency = async (bookingId, hubId, { resolution, managerNotes }) => {
+  return await hubAdminRepository.resolveHubEmergency(bookingId, hubId, {
+    resolution,
+    managerNotes,
+  });
+};
+
+// Shift Settlement Report
+const getStationShiftSettlement = async (hubId) => {
+  const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
+  const endOfDay = new Date(new Date().setHours(23, 59, 59, 999));
+  return await hubAdminRepository.getShiftSettlement(hubId, startOfDay, endOfDay);
+};
+
 module.exports = {
   resolveManagerHub,
   generateHubDashboard,
@@ -499,4 +551,6 @@ module.exports = {
   fetchLostItems,
   searchLostItemsByBooking,
   claimLostItem,
+  resolveStationEmergency,
+  getStationShiftSettlement,
 };

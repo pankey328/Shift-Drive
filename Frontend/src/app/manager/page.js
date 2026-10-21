@@ -25,7 +25,17 @@ import {
   ShieldCheck,
   FileText,
   UserCheck,
+  PhoneCall,
+  Banknote,
+  QrCode,
+  CreditCard,
+  Printer,
+  Wrench,
+  AlertOctagon,
+  ArrowRight,
+  Truck,
 } from "lucide-react";
+import Link from "next/link";
 
 export default function ManagerDispatchPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
@@ -60,6 +70,17 @@ export default function ManagerDispatchPage() {
   // Counter KYC Verification State
   const [approvingKyc, setApprovingKyc] = useState(false);
   const [kycActionMessage, setKycActionMessage] = useState("");
+
+  // Emergency SOS Roadside Resolution State
+  const [emergencyModal, setEmergencyModal] = useState(null); // booking
+  const [emergencyResolution, setEmergencyResolution] = useState("RESUME_TRIP");
+  const [emergencyManagerNotes, setEmergencyManagerNotes] = useState("");
+  const [submittingEmergency, setSubmittingEmergency] = useState(false);
+  const [emergencyActionMsg, setEmergencyActionMsg] = useState("");
+  const [emergencyError, setEmergencyError] = useState("");
+
+  // Daily Shift Counter Settlement Modal State
+  const [showSettlementModal, setShowSettlementModal] = useState(false);
 
   // Resolve Station Hub Details
   const resolveStationHub = useCallback(async (overrideHubId = null) => {
@@ -234,6 +255,37 @@ export default function ManagerDispatchPage() {
     }
   };
 
+  // Station Manager Emergency SOS Resolution Handler
+  const handleResolveEmergencySubmit = async (e) => {
+    e.preventDefault();
+    if (!emergencyModal) return;
+    setSubmittingEmergency(true);
+    setEmergencyError("");
+    setEmergencyActionMsg("");
+
+    try {
+      const res = await api.patch(
+        `/hub-admin/emergency/${emergencyModal.bookingId}/resolve?hubId=${selectedHubId}`,
+        {
+          resolution: emergencyResolution,
+          manager_notes: emergencyManagerNotes,
+        }
+      );
+      if (res.data?.success) {
+        setEmergencyActionMsg(res.data.message || "Emergency incident resolved successfully.");
+        setTimeout(() => {
+          setEmergencyModal(null);
+          setEmergencyActionMsg("");
+          fetchDashboard();
+        }, 1200);
+      }
+    } catch (err) {
+      setEmergencyError(err.response?.data?.message || "Failed to resolve emergency incident.");
+    } finally {
+      setSubmittingEmergency(false);
+    }
+  };
+
   if (!mounted || authLoading) {
     return (
       <div className="py-24 flex flex-col items-center justify-center space-y-3">
@@ -283,6 +335,94 @@ export default function ManagerDispatchPage() {
         </div>
       )}
 
+      {/* EMERGENCY SOS ROADSIDE ALERT BANNER & QUEUE */}
+      {actionDesk?.emergency_alerts?.length > 0 && (
+        <div className="p-6 rounded-3xl bg-red-950/50 border-2 border-red-600/80 shadow-2xl shadow-red-950/50 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-red-800/60 pb-3">
+            <div className="flex items-center gap-3 text-red-300 font-extrabold text-sm sm:text-base">
+              <span className="p-2.5 rounded-2xl bg-red-600 text-white animate-bounce shadow-lg shadow-red-600/40">
+                <AlertOctagon className="w-5 h-5" />
+              </span>
+              <div>
+                <span className="tracking-wide">CRITICAL: ROADSIDE EMERGENCY SOS ({actionDesk.emergency_alerts.length})</span>
+                <p className="text-xs font-normal text-red-200">
+                  Customer breakdown reported on road. Late fees paused. Immediate recovery action required.
+                </p>
+              </div>
+            </div>
+            <span className="self-start sm:self-auto text-[10px] uppercase font-bold tracking-wider px-3 py-1 rounded-full bg-red-600 text-white shadow-md animate-pulse">
+              Urgent Station Action
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {actionDesk.emergency_alerts.map((booking) => (
+              <div
+                key={booking.bookingId}
+                className="p-4 rounded-2xl bg-black/80 border border-red-700/60 flex flex-col justify-between gap-4 text-xs"
+              >
+                <div className="space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="font-extrabold text-white text-sm block">
+                        {booking.Vehicle?.make} {booking.Vehicle?.model}
+                      </span>
+                      <span className="text-[11px] font-mono font-bold text-red-400">
+                        {booking.Vehicle?.plate_number}
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-900/80 border border-red-700 text-red-300">
+                      EMERGENCY HOLD
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800/80 space-y-1.5 text-neutral-300 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-neutral-400">Driver:</span>
+                      <span className="text-white font-bold">{booking.Customer?.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-400">Phone:</span>
+                      <span className="text-white font-mono">{booking.Customer?.phone}</span>
+                    </div>
+                    {booking.incident_notes && (
+                      <div className="pt-1.5 border-t border-neutral-900">
+                        <span className="text-neutral-400 block text-[10px]">Notes / Breakdown Location:</span>
+                        <p className="text-amber-300 text-[11px] italic font-medium">{booking.incident_notes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 border-t border-red-950">
+                  <a
+                    href={`tel:${booking.Customer?.phone}`}
+                    className="flex-1 py-2 px-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Call Driver</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmergencyModal(booking);
+                      setEmergencyResolution("RESUME_TRIP");
+                      setEmergencyManagerNotes("");
+                      setEmergencyError("");
+                      setEmergencyActionMsg("");
+                    }}
+                    className="flex-1 py-2 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md shadow-red-600/30 cursor-pointer"
+                  >
+                    <Wrench className="w-3.5 h-3.5" />
+                    <span>Resolve Incident</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Metric Strip: Lot Health & Capacity */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-1 shadow-sm">
@@ -318,15 +458,166 @@ export default function ManagerDispatchPage() {
           <span className="text-[10px] text-neutral-500">Service Bay or Cleaning Buffer</span>
         </div>
 
-        <div className="p-5 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-1 shadow-sm">
-          <span className="text-[11px] font-semibold text-neutral-400 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-neutral-400"></span>
-            Physical Lot Capacity
+        <div className="p-5 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-2 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-neutral-400 flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${
+                (fleetHealth?.occupancy_rate || 0) >= 85
+                  ? "bg-red-400 animate-pulse"
+                  : (fleetHealth?.occupancy_rate || 0) >= 60
+                  ? "bg-amber-400"
+                  : "bg-emerald-400"
+              }`}></span>
+              Lot Bay Occupancy
+            </span>
+            <span className="text-[11px] font-mono font-bold text-white">
+              {fleetHealth?.occupancy_rate ?? 0}%
+            </span>
+          </div>
+
+          <div className="flex items-baseline gap-1.5">
+            <p className="text-3xl font-black text-white">
+              {fleetHealth?.total_on_lot ?? 0}
+            </p>
+            <span className="text-sm font-bold text-neutral-500">
+              / {fleetHealth?.station_capacity ?? 20} Bays
+            </span>
+          </div>
+
+          <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+            <div
+              className={`h-full transition-all duration-500 ${
+                (fleetHealth?.occupancy_rate || 0) >= 85
+                  ? "bg-red-500"
+                  : (fleetHealth?.occupancy_rate || 0) >= 60
+                  ? "bg-amber-400"
+                  : "bg-blue-400"
+              }`}
+              style={{ width: `${Math.min(100, fleetHealth?.occupancy_rate ?? 0)}%` }}
+            />
+          </div>
+
+          <span className="text-[10px] text-neutral-500 block">
+            {fleetHealth?.available_bays ?? 0} Empty Bays Available
           </span>
-          <p className="text-3xl font-black text-white">
-            {fleetHealth?.total_on_lot ?? 0}
-          </p>
-          <span className="text-[10px] text-neutral-500">Vehicles Physically at Station</span>
+        </div>
+      </div>
+
+      {/* REBALANCING & FLEET CAPACITY ADVISORY */}
+      {fleetHealth?.rebalance_status && fleetHealth.rebalance_status !== "BALANCED" && (
+        <div
+          className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+            fleetHealth.rebalance_status === "OVERCAPACITY_RISK"
+              ? "bg-red-950/40 border-red-800/80 text-red-200"
+              : "bg-amber-950/40 border-amber-800/80 text-amber-200"
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <Truck
+              className={`w-5 h-5 flex-shrink-0 ${
+                fleetHealth.rebalance_status === "OVERCAPACITY_RISK"
+                  ? "text-red-400"
+                  : "text-amber-400"
+              }`}
+            />
+            <div>
+              <span className="font-bold uppercase tracking-wider block text-[10px]">
+                {fleetHealth.rebalance_status === "OVERCAPACITY_RISK"
+                  ? "High Lot Congestion Alert"
+                  : "Low Ready Fleet Warning"}
+              </span>
+              <p className="text-neutral-300 font-medium">
+                {fleetHealth.rebalance_message}
+              </p>
+            </div>
+          </div>
+
+          <Link
+            href="/manager/transfers"
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all self-start sm:self-auto whitespace-nowrap shadow-md ${
+              fleetHealth.rebalance_status === "OVERCAPACITY_RISK"
+                ? "bg-red-600 hover:bg-red-500 text-white shadow-red-600/20"
+                : "bg-amber-500 hover:bg-amber-400 text-black shadow-amber-500/20"
+            }`}
+          >
+            <span>
+              {fleetHealth.rebalance_status === "OVERCAPACITY_RISK"
+                ? "Deadhead Transfer Out"
+                : "Request Fleet Transfer In"}
+            </span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
+
+      {/* DAILY SHIFT COUNTER & TILL SETTLEMENT STRIP */}
+      <div className="p-6 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800 pb-3">
+          <div>
+            <h2 className="text-sm font-bold text-white flex items-center gap-2">
+              <Banknote className="w-4 h-4 text-emerald-400" />
+              <span>Station Daily Shift Counter Settlement (Today)</span>
+            </h2>
+            <p className="text-xs text-neutral-400">
+              Physical register drawer collections from walk-in POS rentals and return penalty settlements.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSettlementModal(true)}
+            className="px-3.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+          >
+            <Printer className="w-3.5 h-3.5 text-blue-400" />
+            <span>Reconcile Shift & Export Till Log</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-1">
+            <span className="text-[11px] font-semibold text-neutral-400 flex items-center gap-1.5">
+              <Banknote className="w-3.5 h-3.5 text-emerald-400" />
+              Cash in Drawer
+            </span>
+            <p className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">
+              ₹{(dashboardData?.shift_settlement?.cash_in_register || 0).toLocaleString("en-IN")}
+            </p>
+            <span className="text-[10px] text-neutral-500">Physical Currency in Till</span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-1">
+            <span className="text-[11px] font-semibold text-neutral-400 flex items-center gap-1.5">
+              <QrCode className="w-3.5 h-3.5 text-purple-400" />
+              Counter UPI QR
+            </span>
+            <p className="text-xl sm:text-2xl font-black text-purple-400 font-mono">
+              ₹{(dashboardData?.shift_settlement?.upi_qr_collected || 0).toLocaleString("en-IN")}
+            </p>
+            <span className="text-[10px] text-neutral-500">Instant QR Collections</span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-1">
+            <span className="text-[11px] font-semibold text-neutral-400 flex items-center gap-1.5">
+              <CreditCard className="w-3.5 h-3.5 text-blue-400" />
+              POS Card Terminal
+            </span>
+            <p className="text-xl sm:text-2xl font-black text-blue-400 font-mono">
+              ₹{(dashboardData?.shift_settlement?.card_pos_terminal || 0).toLocaleString("en-IN")}
+            </p>
+            <span className="text-[10px] text-neutral-500">Terminal Swipes / Tap</span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-neutral-950 to-neutral-900 border border-neutral-700/80 space-y-1">
+            <span className="text-[11px] font-semibold text-neutral-300 flex items-center gap-1.5">
+              <Receipt className="w-3.5 h-3.5 text-amber-400" />
+              Gross Shift Revenue
+            </span>
+            <p className="text-xl sm:text-2xl font-black text-white font-mono">
+              ₹{(dashboardData?.shift_settlement?.grand_total_settlement || 0).toLocaleString("en-IN")}
+            </p>
+            <span className="text-[10px] text-neutral-400">
+              {dashboardData?.shift_settlement?.total_transactions_count || 0} Transactions Reconciled
+            </span>
+          </div>
         </div>
       </div>
 
@@ -982,6 +1273,364 @@ export default function ManagerDispatchPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* EMERGENCY SOS RESOLUTION MODAL */}
+      {emergencyModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-800 w-full max-w-lg rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-red-600 text-white shadow-lg shadow-red-600/30">
+                  <AlertOctagon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">
+                    Emergency SOS Incident Resolution
+                  </h3>
+                  <p className="text-xs text-neutral-400">
+                    Station recovery, roadside assistance & vehicle status reconciliation.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmergencyModal(null)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Vehicle & Customer Summary */}
+            <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-white font-bold">
+                  {emergencyModal.Vehicle?.make} {emergencyModal.Vehicle?.model}
+                </span>
+                <span className="font-mono text-red-400 font-bold">
+                  {emergencyModal.Vehicle?.plate_number}
+                </span>
+              </div>
+              <div className="flex justify-between text-neutral-400">
+                <span>Driver:</span>
+                <span className="text-neutral-200">
+                  {emergencyModal.Customer?.name} ({emergencyModal.Customer?.phone})
+                </span>
+              </div>
+              {emergencyModal.incident_notes && (
+                <div className="pt-1.5 border-t border-neutral-900">
+                  <span className="text-[10px] text-neutral-400 block">Reported Notes:</span>
+                  <p className="text-amber-300 italic text-[11px] font-medium">
+                    {emergencyModal.incident_notes}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleResolveEmergencySubmit} className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <label className="text-neutral-300 font-semibold block">
+                  Select Resolution Action:
+                </label>
+                <div className="grid grid-cols-1 gap-2">
+                  <label
+                    className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${
+                      emergencyResolution === "RESUME_TRIP"
+                        ? "bg-emerald-950/40 border-emerald-500/80 text-white"
+                        : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="emergencyResolution"
+                      value="RESUME_TRIP"
+                      checked={emergencyResolution === "RESUME_TRIP"}
+                      onChange={(e) => setEmergencyResolution(e.target.value)}
+                      className="accent-emerald-500"
+                    />
+                    <div>
+                      <span className="font-bold text-emerald-400 block">
+                        Driver Resumed Journey (Resume Trip)
+                      </span>
+                      <span className="text-[11px] text-neutral-400 block">
+                        Minor roadside fix completed. Trip status restored to Active Trip.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${
+                      emergencyResolution === "TOW_TO_MAINTENANCE"
+                        ? "bg-amber-950/40 border-amber-500/80 text-white"
+                        : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="emergencyResolution"
+                      value="TOW_TO_MAINTENANCE"
+                      checked={emergencyResolution === "TOW_TO_MAINTENANCE"}
+                      onChange={(e) => setEmergencyResolution(e.target.value)}
+                      className="accent-amber-500"
+                    />
+                    <div>
+                      <span className="font-bold text-amber-400 block">
+                        Towed to Station (Complete Rental & Route to Service Bay)
+                      </span>
+                      <span className="text-[11px] text-neutral-400 block">
+                        Vehicle towed back to station lot. Rental completed; car status set to Maintenance.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${
+                      emergencyResolution === "CANCELLED"
+                        ? "bg-red-950/40 border-red-500/80 text-white"
+                        : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="emergencyResolution"
+                      value="CANCELLED"
+                      checked={emergencyResolution === "CANCELLED"}
+                      onChange={(e) => setEmergencyResolution(e.target.value)}
+                      className="accent-red-500"
+                    />
+                    <div>
+                      <span className="font-bold text-red-400 block">
+                        Trip Aborted Early (Cancel & Route to Maintenance)
+                      </span>
+                      <span className="text-[11px] text-neutral-400 block">
+                        Incident prevented trip completion. Booking marked Cancelled.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-neutral-300 font-semibold block">
+                  Station Recovery & Incident Dispatch Notes:
+                </label>
+                <textarea
+                  value={emergencyManagerNotes}
+                  onChange={(e) => setEmergencyManagerNotes(e.target.value)}
+                  placeholder="e.g. Dispatched roadside technician for tire puncture replacement. Vehicle verified safe to drive."
+                  rows={3}
+                  className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-600 focus:outline-none focus:border-red-500 transition-colors"
+                />
+              </div>
+
+              {emergencyError && (
+                <p className="text-xs text-red-400 bg-red-950/50 p-2.5 rounded-xl border border-red-800">
+                  {emergencyError}
+                </p>
+              )}
+
+              {emergencyActionMsg && (
+                <p className="text-xs text-emerald-400 bg-emerald-950/50 p-2.5 rounded-xl border border-emerald-800 font-semibold flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  {emergencyActionMsg}
+                </p>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEmergencyModal(null)}
+                  disabled={submittingEmergency}
+                  className="flex-1 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingEmergency}
+                  className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold transition-all shadow-lg shadow-red-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {submittingEmergency ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Resolving...</span>
+                    </>
+                  ) : (
+                    <span>Confirm Resolution</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DAILY SHIFT RECONCILIATION & TILL LOG MODAL */}
+      {showSettlementModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-800 w-full max-w-3xl rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-1">
+                  <Banknote className="w-4 h-4" />
+                  <span>Station Shift Settlement Audit</span>
+                </div>
+                <h3 className="text-xl font-extrabold text-white">
+                  Daily Counter Till & Gross Collection Log
+                </h3>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  Station: <strong className="text-white">{currentHub?.name}</strong> • Date:{" "}
+                  {new Date().toLocaleDateString("en-IN", { dateStyle: "full" })}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Print Report</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSettlementModal(false)}
+                  className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Financial Summary Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-1">
+                <span className="text-[10px] text-neutral-400 block">Cash in Drawer:</span>
+                <span className="text-lg font-black text-emerald-400 font-mono block">
+                  ₹{(dashboardData?.shift_settlement?.cash_in_register || 0).toLocaleString("en-IN")}
+                </span>
+                <span className="text-[10px] text-neutral-500">Physical Till</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-1">
+                <span className="text-[10px] text-neutral-400 block">UPI QR Collected:</span>
+                <span className="text-lg font-black text-purple-400 font-mono block">
+                  ₹{(dashboardData?.shift_settlement?.upi_qr_collected || 0).toLocaleString("en-IN")}
+                </span>
+                <span className="text-[10px] text-neutral-500">Digital QR</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-1">
+                <span className="text-[10px] text-neutral-400 block">Card Terminal POS:</span>
+                <span className="text-lg font-black text-blue-400 font-mono block">
+                  ₹{(dashboardData?.shift_settlement?.card_pos_terminal || 0).toLocaleString("en-IN")}
+                </span>
+                <span className="text-[10px] text-neutral-500">POS Machine</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-800/60 space-y-1">
+                <span className="text-[10px] text-emerald-300 font-bold block">Gross Shift Total:</span>
+                <span className="text-lg font-black text-white font-mono block">
+                  ₹{(dashboardData?.shift_settlement?.grand_total_settlement || 0).toLocaleString("en-IN")}
+                </span>
+                <span className="text-[10px] text-emerald-400">
+                  {dashboardData?.shift_settlement?.total_transactions_count || 0} Transactions
+                </span>
+              </div>
+            </div>
+
+            {/* Itemized Table */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
+                Itemized Shift Transactions ({dashboardData?.shift_settlement?.items?.length || 0})
+              </h4>
+
+              {(!dashboardData?.shift_settlement?.items ||
+                dashboardData.shift_settlement.items.length === 0) ? (
+                <div className="p-8 rounded-2xl bg-neutral-950 border border-neutral-800 text-center space-y-2">
+                  <Receipt className="w-8 h-8 text-neutral-600 mx-auto" />
+                  <p className="text-xs text-neutral-400">
+                    No counter POS rentals or return penalties collected yet during today&apos;s shift.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-neutral-800 overflow-hidden bg-neutral-950">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-neutral-300">
+                      <thead className="bg-neutral-900 border-b border-neutral-800 text-[10px] uppercase font-bold text-neutral-400">
+                        <tr>
+                          <th className="p-3">Time</th>
+                          <th className="p-3">Type</th>
+                          <th className="p-3">Customer / Vehicle</th>
+                          <th className="p-3">Payment Mode</th>
+                          <th className="p-3 text-right">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-900">
+                        {dashboardData.shift_settlement.items.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-neutral-900/40 transition-colors">
+                            <td className="p-3 font-mono text-[11px] text-neutral-400 whitespace-nowrap">
+                              {new Date(item.timestamp).toLocaleTimeString("en-IN", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </td>
+                            <td className="p-3 whitespace-nowrap">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  item.type === "POS_RENTAL"
+                                    ? "bg-blue-950 text-blue-400 border border-blue-800"
+                                    : item.type === "DAMAGE_PENALTY"
+                                    ? "bg-red-950 text-red-400 border border-red-800"
+                                    : "bg-amber-950 text-amber-400 border border-amber-800"
+                                }`}
+                              >
+                                {item.type}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              <span className="font-semibold text-white block">
+                                {item.customer_name}
+                              </span>
+                              <span className="text-[11px] text-neutral-400 block">
+                                {item.vehicle}
+                              </span>
+                            </td>
+                            <td className="p-3 whitespace-nowrap">
+                              <span
+                                className={`px-2 py-0.5 rounded-md font-mono text-[11px] font-bold ${
+                                  item.payment_method === "CASH"
+                                    ? "bg-emerald-950/80 text-emerald-300"
+                                    : item.payment_method === "UPI"
+                                    ? "bg-purple-950/80 text-purple-300"
+                                    : "bg-blue-950/80 text-blue-300"
+                                }`}
+                              >
+                                {item.payment_method}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right font-mono font-bold text-white whitespace-nowrap">
+                              ₹{item.amount.toLocaleString("en-IN")}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowSettlementModal(false)}
+                className="px-6 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                Close Reconciliation
+              </button>
+            </div>
           </div>
         </div>
       )}

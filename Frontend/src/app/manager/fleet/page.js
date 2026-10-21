@@ -75,6 +75,16 @@ export default function ManagerFleetPage() {
   const [addVehicleError, setAddVehicleError] = useState("");
   const [addVehicleSuccess, setAddVehicleSuccess] = useState("");
 
+  // Maintenance Bay Service Modal State
+  const [serviceModalCar, setServiceModalCar] = useState(null);
+  const [serviceForm, setServiceForm] = useState({
+    service_category: "PERIODIC_SERVICE",
+    service_notes: "",
+    estimated_ready_date: "",
+    mechanic_assigned: "",
+  });
+  const [submittingService, setSubmittingService] = useState(false);
+
   // Resolve Station Hub
   const resolveStationHub = useCallback(async () => {
     try {
@@ -165,10 +175,13 @@ export default function ManagerFleetPage() {
     }
   };
 
-  const handleUpdateVehicleStatus = async (vehicleId, newStatus) => {
+  const handleUpdateVehicleStatus = async (vehicleId, newStatus, serviceData = {}) => {
     setUpdatingVehicleId(vehicleId);
     try {
-      const res = await api.patch(`/vehicles/${vehicleId}/status`, { status: newStatus });
+      const res = await api.patch(`/vehicles/${vehicleId}/status`, {
+        status: newStatus,
+        ...serviceData,
+      });
       if (res.data?.success) {
         await fetchStationFleet();
       }
@@ -176,6 +189,38 @@ export default function ManagerFleetPage() {
       alert(err.response?.data?.message || "Failed to update vehicle status.");
     } finally {
       setUpdatingVehicleId(null);
+    }
+  };
+
+  const handleServiceSubmit = async (e) => {
+    e.preventDefault();
+    if (!serviceModalCar) return;
+    setSubmittingService(true);
+    try {
+      await handleUpdateVehicleStatus(serviceModalCar.vehicleId, "MAINTENANCE", {
+        service_category: serviceForm.service_category,
+        service_notes: serviceForm.service_notes,
+        estimated_ready_date: serviceForm.estimated_ready_date || null,
+        mechanic_assigned: serviceForm.mechanic_assigned || null,
+      });
+      setServiceModalCar(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSubmittingService(false);
+    }
+  };
+
+  const handleTriggerEmergencyHold = async (bookingId, notes) => {
+    try {
+      const res = await api.post(`/bookings/${bookingId}/emergency`, { notes });
+      if (res.data?.success) {
+        alert("Trip successfully placed on Emergency Hold. Late fees frozen and roadside incident logged on Action Desk.");
+        setSelectedTripDossier(null);
+        await fetchStationFleet();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to place booking on Emergency Hold.");
     }
   };
 
@@ -312,10 +357,10 @@ export default function ManagerFleetPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex gap-2 overflow-x-auto pb-1 text-xs font-semibold">
           {[
-            { label: "All Station Fleet", value: "ALL" },
-            { label: "Ready on Lot", value: "ACTIVE" },
-            { label: "In-Use on Road", value: "IN_USE" },
-            { label: "Maintenance / Buffer", value: "MAINTENANCE" },
+            { label: `All Station Fleet (${lotVehicles.length})`, value: "ALL" },
+            { label: `Ready on Lot (${lotVehicles.filter((v) => v.status === "ACTIVE").length})`, value: "ACTIVE" },
+            { label: `In-Use on Road (${lotVehicles.filter((v) => v.status === "IN_USE").length})`, value: "IN_USE" },
+            { label: `Maintenance / Bay (${lotVehicles.filter((v) => v.status === "MAINTENANCE").length})`, value: "MAINTENANCE" },
           ].map((tab) => (
             <button
               key={tab.value}
@@ -421,9 +466,13 @@ export default function ManagerFleetPage() {
                     title="Send to Maintenance Bay (Servicing / Cleaning)"
                     disabled={updatingVehicleId === car.vehicleId}
                     onClick={() => {
-                      if (confirm(`Move ${car.make} ${car.model} (${car.plate_number}) to Maintenance Bay for servicing or detailing?`)) {
-                        handleUpdateVehicleStatus(car.vehicleId, "MAINTENANCE");
-                      }
+                      setServiceModalCar(car);
+                      setServiceForm({
+                        service_category: "PERIODIC_SERVICE",
+                        service_notes: "",
+                        estimated_ready_date: "",
+                        mechanic_assigned: "",
+                      });
                     }}
                     className="px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-amber-950/60 hover:text-amber-400 hover:border-amber-700/60 text-neutral-400 text-xs font-semibold transition-all cursor-pointer border border-neutral-700 flex items-center gap-1.5"
                   >
@@ -438,11 +487,49 @@ export default function ManagerFleetPage() {
               )}
 
               {car.status === "MAINTENANCE" && (
-                <div className="space-y-2">
-                  <div className="p-3 rounded-2xl bg-amber-950/30 border border-amber-800/40 text-xs text-amber-300 flex items-center gap-2">
-                    <Wrench className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                    <span>Station Maintenance Bay: Servicing or damage repair in progress.</span>
+                <div className="space-y-2.5">
+                  <div className="p-3.5 rounded-2xl bg-amber-950/20 border border-amber-800/40 text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-amber-300 font-semibold">
+                        <Wrench className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                        <span>Maintenance Bay Order</span>
+                      </div>
+                      {car.service_category && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                          {car.service_category.replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </div>
+
+                    {(car.mechanic_assigned || car.estimated_ready_date) && (
+                      <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-amber-800/20">
+                        <div>
+                          <span className="text-neutral-500 block text-[10px]">Assigned Tech</span>
+                          <span className="text-neutral-200 font-medium">{car.mechanic_assigned || "Station Tech"}</span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500 block text-[10px]">Est. Ready</span>
+                          <span className="text-neutral-200 font-medium">
+                            {car.estimated_ready_date
+                              ? new Date(car.estimated_ready_date).toLocaleDateString("en-IN", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "Standard Turnaround"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {car.service_notes && (
+                      <p className="text-[11px] text-neutral-400 bg-neutral-950/80 p-2 rounded-xl border border-neutral-800 italic">
+                        &ldquo;{car.service_notes}&rdquo;
+                      </p>
+                    )}
                   </div>
+
                   <button
                     type="button"
                     disabled={updatingVehicleId === car.vehicleId}
@@ -461,45 +548,88 @@ export default function ManagerFleetPage() {
 
               {car.status === "IN_USE" && (
                 <div className="space-y-2">
-                  <div
-                    onClick={() => setSelectedTripDossier({ car, trip: car.Bookings?.[0] })}
-                    className="p-3 rounded-2xl bg-blue-950/40 border border-blue-800/60 cursor-pointer hover:bg-blue-900/30 transition-all space-y-1.5 group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-blue-300 flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-blue-400" />
-                        <span>{car.Bookings?.[0]?.Customer?.name || "Active Renter"}</span>
-                      </span>
-                      <span className="text-[10px] font-mono text-blue-400 bg-blue-950 px-2 py-0.5 rounded border border-blue-800">
-                        {car.Bookings?.[0]?.Customer?.phone || "On Trip"}
-                      </span>
-                    </div>
-                    {car.Bookings?.[0] && (
-                      <div className="flex justify-between items-center text-[10px] text-neutral-400 pt-0.5">
-                        <span>Scheduled Return:</span>
-                        <span className="text-white font-medium">
-                          {new Date(car.Bookings[0].end_time).toLocaleDateString("en-IN", {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                  {car.Bookings?.[0]?.status === "EMERGENCY_HOLD" ? (
+                    <div
+                      onClick={() => setSelectedTripDossier({ car, trip: car.Bookings?.[0] })}
+                      className="p-3.5 rounded-2xl bg-red-950/40 border border-red-800/80 cursor-pointer hover:bg-red-900/30 transition-all space-y-2 group shadow-[0_0_15px_rgba(239,68,68,0.15)]"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-red-300 flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+                          <span>ROADSIDE SOS ACTIVE</span>
+                        </span>
+                        <span className="text-[10px] font-mono font-bold text-red-400 bg-red-950 px-2 py-0.5 rounded border border-red-800">
+                          HOLD IN PROGRESS
                         </span>
                       </div>
-                    )}
-                    <div className="pt-1 flex items-center justify-between text-[10px] text-blue-400 font-semibold group-hover:text-blue-300">
-                      <span>Assigned Trip Dossier</span>
-                      <span className="underline">View Ride Details &rarr;</span>
+                      <div className="flex items-center justify-between text-xs text-white">
+                        <span className="font-semibold">{car.Bookings?.[0]?.Customer?.name || "Active Renter"}</span>
+                        <span className="font-mono text-neutral-300 text-[11px]">{car.Bookings?.[0]?.Customer?.phone}</span>
+                      </div>
+                      {car.Bookings?.[0]?.incident_notes && (
+                        <p className="text-[11px] text-red-200/90 italic bg-red-950/60 p-1.5 rounded-lg border border-red-900/50 line-clamp-2">
+                          &ldquo;{car.Bookings[0].incident_notes}&rdquo;
+                        </p>
+                      )}
+                      <div className="pt-0.5 flex items-center justify-between text-[10px] text-red-400 font-bold group-hover:text-red-300">
+                        <span>Penalties Frozen</span>
+                        <span className="underline">View & Resolve SOS &rarr;</span>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div
+                      onClick={() => setSelectedTripDossier({ car, trip: car.Bookings?.[0] })}
+                      className="p-3 rounded-2xl bg-blue-950/40 border border-blue-800/60 cursor-pointer hover:bg-blue-900/30 transition-all space-y-1.5 group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-blue-300 flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-blue-400" />
+                          <span>{car.Bookings?.[0]?.Customer?.name || "Active Renter"}</span>
+                        </span>
+                        <span className="text-[10px] font-mono text-blue-400 bg-blue-950 px-2 py-0.5 rounded border border-blue-800">
+                          {car.Bookings?.[0]?.Customer?.phone || "On Trip"}
+                        </span>
+                      </div>
+                      {car.Bookings?.[0] && (
+                        <div className="flex justify-between items-center text-[10px] text-neutral-400 pt-0.5">
+                          <span>Scheduled Return:</span>
+                          <span className="text-white font-medium">
+                            {new Date(car.Bookings[0].end_time).toLocaleDateString("en-IN", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                        </div>
+                      )}
+                      <div className="pt-1 flex items-center justify-between text-[10px] text-blue-400 font-semibold group-hover:text-blue-300">
+                        <span>Assigned Trip Dossier</span>
+                        <span className="underline">View Ride Details &rarr;</span>
+                      </div>
+                    </div>
+                  )}
 
                   <button
                     type="button"
                     onClick={() => setSelectedTripDossier({ car, trip: car.Bookings?.[0] })}
-                    className="w-full py-2.5 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-lg shadow-blue-600/20"
+                    className={`w-full py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-lg ${
+                      car.Bookings?.[0]?.status === "EMERGENCY_HOLD"
+                        ? "bg-red-600 hover:bg-red-500 text-white shadow-red-600/20"
+                        : "bg-blue-600/90 hover:bg-blue-500 text-white shadow-blue-600/20"
+                    }`}
                   >
-                    <FileText className="w-3.5 h-3.5" />
-                    <span>View Driver & Trip Details</span>
+                    {car.Bookings?.[0]?.status === "EMERGENCY_HOLD" ? (
+                      <>
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>Manage Active Roadside Emergency</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>View Driver & Trip Details</span>
+                      </>
+                    )}
                   </button>
                 </div>
               )}
@@ -594,11 +724,23 @@ export default function ManagerFleetPage() {
           <div className="max-w-lg w-full rounded-3xl bg-neutral-900 border border-neutral-800 p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
-                  <User className="w-5 h-5" />
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                  selectedTripDossier.trip?.status === "EMERGENCY_HOLD"
+                    ? "bg-red-500/10 border border-red-500/30 text-red-400"
+                    : "bg-blue-500/10 border border-blue-500/30 text-blue-400"
+                }`}>
+                  {selectedTripDossier.trip?.status === "EMERGENCY_HOLD" ? (
+                    <AlertTriangle className="w-5 h-5 animate-pulse" />
+                  ) : (
+                    <User className="w-5 h-5" />
+                  )}
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Active Driver & Ride Dossier</h3>
+                  <h3 className="text-base font-bold text-white">
+                    {selectedTripDossier.trip?.status === "EMERGENCY_HOLD"
+                      ? "Roadside SOS Trip Dossier"
+                      : "Active Driver & Ride Dossier"}
+                  </h3>
                   <p className="text-xs text-neutral-400">
                     {selectedTripDossier.car?.make} {selectedTripDossier.car?.model} •{" "}
                     <span className="font-mono text-neutral-200">{selectedTripDossier.car?.plate_number}</span>
@@ -616,6 +758,26 @@ export default function ManagerFleetPage() {
 
             {selectedTripDossier.trip ? (
               <div className="space-y-4">
+                {/* Emergency Hold Banner inside Dossier */}
+                {selectedTripDossier.trip.status === "EMERGENCY_HOLD" && (
+                  <div className="p-4 rounded-2xl bg-red-950/40 border border-red-800/80 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 font-bold text-red-300">
+                        <AlertTriangle className="w-4 h-4 text-red-400 animate-pulse" />
+                        <span>Roadside Emergency Hold Active</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-950 border border-red-800 text-red-400">
+                        PENALTIES FROZEN
+                      </span>
+                    </div>
+                    {selectedTripDossier.trip.incident_notes && (
+                      <p className="text-[11px] text-red-200 bg-red-950/70 p-2.5 rounded-xl border border-red-900/50">
+                        <strong>Reported Incident:</strong> &ldquo;{selectedTripDossier.trip.incident_notes}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Driver Credentials Card */}
                 <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-3">
                   <div className="flex items-center justify-between">
@@ -721,14 +883,14 @@ export default function ManagerFleetPage() {
 
                   {selectedTripDossier.trip.incident_notes && (
                     <div className="p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-neutral-300">
-                      <span className="text-[10px] text-neutral-500 font-semibold block mb-0.5">Desk / POS Notes:</span>
+                      <span className="text-[10px] text-neutral-500 font-semibold block mb-0.5">Desk / Incident Notes:</span>
                       <p>{selectedTripDossier.trip.incident_notes}</p>
                     </div>
                   )}
                 </div>
 
                 {/* Quick Actions */}
-                <div className="flex gap-3 pt-2">
+                <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
                   <a
                     href={`tel:${selectedTripDossier.trip.Customer?.phone}`}
                     className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
@@ -736,6 +898,34 @@ export default function ManagerFleetPage() {
                     <Phone className="w-4 h-4" />
                     <span>Call Driver Directly</span>
                   </a>
+
+                  {selectedTripDossier.trip.status === "EMERGENCY_HOLD" ? (
+                    <a
+                      href="/manager"
+                      className="py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-lg shadow-amber-500/20"
+                    >
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>Resolve SOS on Action Desk</span>
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const notes = prompt(
+                          `Enter Roadside Emergency / Breakdown Notes for ${selectedTripDossier.car?.make} ${selectedTripDossier.car?.model} (Driver: ${selectedTripDossier.trip.Customer?.name}):`,
+                          "Driver reported breakdown over phone. Roadside assistance dispatched."
+                        );
+                        if (notes !== null) {
+                          handleTriggerEmergencyHold(selectedTripDossier.trip.bookingId, notes);
+                        }
+                      }}
+                      className="py-3 px-4 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/50 text-red-400 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <AlertTriangle className="w-4 h-4 text-red-400" />
+                      <span>Flag Emergency Hold</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setSelectedTripDossier(null)}
@@ -960,6 +1150,111 @@ export default function ManagerFleetPage() {
                     <>
                       <PlusCircle className="w-4 h-4" />
                       <span>Onboard Vehicle to Lot</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* MAINTENANCE BAY WORK ORDER MODAL */}
+      {serviceModalCar && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-md w-full rounded-3xl bg-neutral-900 border border-neutral-800 p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Wrench className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Create Service Work Order</h3>
+                  <p className="text-xs text-neutral-400">
+                    {serviceModalCar.make} {serviceModalCar.model} &bull;{" "}
+                    <span className="font-mono text-neutral-200">{serviceModalCar.plate_number}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setServiceModalCar(null)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleServiceSubmit} className="space-y-4 text-xs">
+              <div className="space-y-1">
+                <label className="text-neutral-300 font-semibold">Service Category *</label>
+                <select
+                  value={serviceForm.service_category}
+                  onChange={(e) => setServiceForm({ ...serviceForm, service_category: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white cursor-pointer"
+                >
+                  <option value="PERIODIC_SERVICE">Periodic Maintenance / Oil & Filter</option>
+                  <option value="TIRE_PUNCTURE_WEAR">Tire Puncture / Alignment / Wear</option>
+                  <option value="BODY_DENT_PAINT">Bodywork, Dent Repair & Touchup Paint</option>
+                  <option value="DETAILING_DEEP_CLEAN">Deep Detailing & Sanitization Wash</option>
+                  <option value="BRAKES_MECHANICAL">Brakes, Suspension & Steering</option>
+                  <option value="ENGINE_ELECTRICAL">Engine, Battery & Electrical Systems</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-neutral-300 font-semibold">Assigned Mechanic / Station Bay</label>
+                <input
+                  type="text"
+                  value={serviceForm.mechanic_assigned}
+                  onChange={(e) => setServiceForm({ ...serviceForm, mechanic_assigned: e.target.value })}
+                  placeholder="e.g. Suresh (Bay 2)"
+                  className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-neutral-300 font-semibold">Estimated Completion Date & Time</label>
+                <input
+                  type="datetime-local"
+                  value={serviceForm.estimated_ready_date}
+                  onChange={(e) => setServiceForm({ ...serviceForm, estimated_ready_date: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white cursor-pointer"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-neutral-300 font-semibold">Inspection / Work Order Notes</label>
+                <textarea
+                  rows={3}
+                  value={serviceForm.service_notes}
+                  onChange={(e) => setServiceForm({ ...serviceForm, service_notes: e.target.value })}
+                  placeholder="Specify reason for service, replacement parts required, or customer drop-off report..."
+                  className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-500"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setServiceModalCar(null)}
+                  className="flex-1 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingService}
+                  className="flex-1 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {submittingService ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Moving to Bay...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wrench className="w-3.5 h-3.5" />
+                      <span>Dispatch to Maintenance</span>
                     </>
                   )}
                 </button>

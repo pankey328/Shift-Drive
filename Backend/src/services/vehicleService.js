@@ -81,7 +81,7 @@ const searchAvailableFleet = async (hubId, startTime, endTime) => {
   return await vehicleRepository.getAvailableVehicles(hubId, startTime, endTime);
 };
 
-const changeVehicleStatus = async (vehicleId, status) => {
+const changeVehicleStatus = async (vehicleId, status, serviceData = {}) => {
   const validStatuses = ["ACTIVE", "IN_USE", "MAINTENANCE", "RETIRED"];
   if (!validStatuses.includes(status)) {
     const error = new Error(`Invalid status. Must be one of: ${validStatuses.join(", ")}`);
@@ -96,7 +96,7 @@ const changeVehicleStatus = async (vehicleId, status) => {
     throw error;
   }
 
-  return await vehicleRepository.updateVehicleStatus(vehicleId, status);
+  return await vehicleRepository.updateVehicleStatus(vehicleId, status, serviceData);
 };
 
 const transferVehicleToHub = async (vehicleId, targetHubId) => {

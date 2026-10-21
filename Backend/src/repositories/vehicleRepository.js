@@ -12,7 +12,9 @@ const getVehiclesByHub = async (hubId) => {
       {
         model: Booking,
         as: "Bookings",
-        where: { status: "ACTIVE_TRIP" },
+        where: {
+          status: { [Op.in]: ["ACTIVE_TRIP", "EMERGENCY_HOLD"] },
+        },
         required: false,
         include: [
           {
@@ -56,7 +58,7 @@ const findVehicleById = async (vehicleId) => {
   });
 };
 
-const updateVehicleStatus = async (vehicleId, status) => {
+const updateVehicleStatus = async (vehicleId, status, serviceData = {}) => {
   const vehicle = await Vehicle.findByPk(vehicleId);
   if (!vehicle) {
     const error = new Error("Vehicle not found");
@@ -64,6 +66,21 @@ const updateVehicleStatus = async (vehicleId, status) => {
     throw error;
   }
   vehicle.status = status;
+  if (serviceData.service_category !== undefined) {
+    vehicle.service_category = serviceData.service_category;
+  }
+  if (serviceData.service_notes !== undefined) {
+    vehicle.service_notes = serviceData.service_notes;
+  }
+  if (serviceData.estimated_ready_date !== undefined) {
+    vehicle.estimated_ready_date = serviceData.estimated_ready_date;
+  }
+  if (serviceData.mechanic_assigned !== undefined) {
+    vehicle.mechanic_assigned = serviceData.mechanic_assigned;
+  }
+  if (status === "ACTIVE") {
+    vehicle.service_category = null;
+  }
   await vehicle.save();
   return vehicle;
 };
@@ -177,7 +194,9 @@ const getHubFleetDetailsWithSummary = async (hubId) => {
         {
           model: Booking,
           as: "Bookings",
-          where: { status: "ACTIVE_TRIP" },
+          where: {
+            status: { [Op.in]: ["ACTIVE_TRIP", "EMERGENCY_HOLD"] },
+          },
           required: false,
           include: [
             {

@@ -116,13 +116,24 @@ const getHubFleetDetails = async (req, res) => {
 const handleUpdateStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const {
+      status,
+      service_category,
+      service_notes,
+      estimated_ready_date,
+      mechanic_assigned,
+    } = req.body;
 
     if (!status) {
       return res.status(400).json({ success: false, message: "Status is required." });
     }
 
-    const updatedVehicle = await vehicleService.changeVehicleStatus(id, status);
+    const updatedVehicle = await vehicleService.changeVehicleStatus(id, status, {
+      service_category,
+      service_notes,
+      estimated_ready_date,
+      mechanic_assigned,
+    });
     return res.status(200).json({
       success: true,
       message: `Vehicle status changed to ${status}.`,

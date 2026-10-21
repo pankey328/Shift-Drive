@@ -249,6 +249,56 @@ const handleClaimLostItem = async (req, res) => {
   }
 };
 
+// Emergency Incident Resolution by Hub Manager
+const handleResolveEmergency = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { resolution, manager_notes } = req.body;
+    const hubId = await hubAdminService.resolveManagerHub(
+      req.user,
+      req.query.hubId,
+    );
+
+    const updatedBooking = await hubAdminService.resolveStationEmergency(
+      bookingId,
+      hubId,
+      {
+        resolution,
+        managerNotes: manager_notes,
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Emergency resolved: ${resolution}.`,
+      data: updatedBooking,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+// Station Daily Shift Cash Drawer & Revenue Settlement
+const handleGetShiftSettlement = async (req, res) => {
+  try {
+    const hubId = await hubAdminService.resolveManagerHub(
+      req.user,
+      req.query.hubId,
+    );
+
+    const settlement = await hubAdminService.getStationShiftSettlement(hubId);
+
+    return res.status(200).json({
+      success: true,
+      data: settlement,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getLocalDashboard,
   handleRequestTransfer,
@@ -261,4 +311,7 @@ module.exports = {
   handleGetLostItems,
   handleSearchLostByBooking,
   handleClaimLostItem,
+  handleResolveEmergency,
+  handleGetShiftSettlement,
 };
+

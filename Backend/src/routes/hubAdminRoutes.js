@@ -14,6 +14,8 @@ const {
   handleGetLostItems,
   handleSearchLostByBooking,
   handleClaimLostItem,
+  handleResolveEmergency,
+  handleGetShiftSettlement,
 } = require("../controllers/hubAdminController");
 
 router.use(protect);
@@ -21,6 +23,12 @@ router.use(authorize("HUB_ADMIN", "SUPERADMIN"));
 
 // Hub Action Desk & Health Dashboard
 router.get("/dashboard", getLocalDashboard);
+
+// Daily Shift Cash Drawer & Revenue Settlement
+router.get("/shift-settlement", handleGetShiftSettlement);
+
+// Emergency SOS Incident Resolution by Station Manager
+router.patch("/emergency/:bookingId/resolve", handleResolveEmergency);
 
 // Fleet Rebalancing & Deadheading Transfers
 router.post("/transfers", handleRequestTransfer);
@@ -39,3 +47,4 @@ router.get("/lost-found/booking/:bookingId", handleSearchLostByBooking);
 router.patch("/lost-found/:itemId/claim", handleClaimLostItem);
 
 module.exports = router;
+

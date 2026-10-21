@@ -30,6 +30,10 @@ const Vehicle = sequelize.define(
     fuel_type: { type: DataTypes.STRING(30), defaultValue: "Petrol" },
     transmission: { type: DataTypes.STRING(30), defaultValue: "Automatic" },
     tag: { type: DataTypes.STRING(50), allowNull: true },
+    service_category: { type: DataTypes.STRING(100), allowNull: true },
+    service_notes: { type: DataTypes.TEXT, allowNull: true },
+    estimated_ready_date: { type: DataTypes.DATE, allowNull: true },
+    mechanic_assigned: { type: DataTypes.STRING(100), allowNull: true },
   },
 
   {

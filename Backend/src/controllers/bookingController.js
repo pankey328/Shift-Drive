@@ -43,7 +43,8 @@ const payForBooking = async (req, res) => {
 const reportEmergency = async (req, res) => {
   try {
     const { bookingId } = req.params;
-    const result = await bookingService.reportAccident(bookingId);
+    const { notes } = req.body || {};
+    const result = await bookingService.reportAccident(bookingId, notes);
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
     const statusCode = error.statusCode || 500;

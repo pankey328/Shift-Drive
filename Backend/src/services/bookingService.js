@@ -218,7 +218,7 @@ const confirmBookingPayment = async (userId, bookingId) => {
   return await updateBookingStatus(bookingId, "CONFIRMED");
 };
 
-const reportAccident = async (bookingId) => {
+const reportAccident = async (bookingId, notes = null) => {
   const booking = await findBookingById(bookingId);
 
   if (!booking || booking.status !== "ACTIVE_TRIP") {
@@ -229,6 +229,9 @@ const reportAccident = async (bookingId) => {
 
   // Set status to EMERGENCY_HOLD
   booking.status = "EMERGENCY_HOLD";
+  if (notes) {
+    booking.incident_notes = notes;
+  }
   await booking.save();
 
   // Escalate maintenance

@@ -16,7 +16,7 @@ const findHubByManagerId = async (userId) => {
 
 // Daily Schedule: Pickups, Drop-offs, and Overdue returns
 const getDailySchedule = async (hubId, startOfDay, endOfDay, now) => {
-  const [pickups, dropoffs, overdue] = await Promise.all([
+  const [pickups, dropoffs, overdue, emergencies] = await Promise.all([
     Booking.findAll({
       where: {
         pickup_hub_id: hubId,
@@ -128,9 +128,43 @@ const getDailySchedule = async (hubId, startOfDay, endOfDay, now) => {
       ],
       order: [["end_time", "ASC"]],
     }),
+
+    Booking.findAll({
+      where: {
+        [Op.or]: [{ pickup_hub_id: hubId }, { dropoff_hub_id: hubId }],
+        status: "EMERGENCY_HOLD",
+      },
+      include: [
+        {
+          model: Vehicle,
+          as: "Vehicle",
+          attributes: [
+            "vehicleId",
+            "make",
+            "model",
+            "plate_number",
+            "vehicle_class",
+            "status",
+          ],
+        },
+        {
+          model: User,
+          as: "Customer",
+          attributes: [
+            "userId",
+            "name",
+            "phone",
+            "email",
+            "kyc_status",
+            "kyc_document_url",
+          ],
+        },
+      ],
+      order: [["updatedAt", "DESC"]],
+    }),
   ]);
 
-  return { pickups, dropoffs, overdue };
+  return { pickups, dropoffs, overdue, emergencies };
 };
 
 // Local Fleet Health breakdown
@@ -378,6 +412,198 @@ const updateLostItemRecord = async (itemId, updateData) => {
   return await item.update(updateData);
 };
 
+// Daily Shift Counter Cash & Register Settlement
+const getShiftSettlement = async (hubId, startOfDay, endOfDay) => {
+  // Fetch POS bookings created today at this station
+  const posBookings = await Booking.findAll({
+    where: {
+      pickup_hub_id: hubId,
+      createdAt: { [Op.between]: [startOfDay, endOfDay] },
+      incident_notes: { [Op.like]: "%Walk-In POS%" },
+    },
+    include: [
+      {
+        model: User,
+        as: "Customer",
+        attributes: ["userId", "name", "phone", "email"],
+      },
+      {
+        model: Vehicle,
+        as: "Vehicle",
+        attributes: ["vehicleId", "make", "model", "plate_number"],
+      },
+      {
+        model: WalletTransaction,
+        as: "Transactions",
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+  });
+
+  // Fetch late return / damage penalties collected at this station today
+  const counterPenalties = await WalletTransaction.findAll({
+    where: {
+      createdAt: { [Op.between]: [startOfDay, endOfDay] },
+      type: { [Op.in]: ["LATE_FEE", "DAMAGE_PENALTY"] },
+    },
+    include: [
+      {
+        model: Booking,
+        where: { dropoff_hub_id: hubId },
+        include: [
+          {
+            model: User,
+            as: "Customer",
+            attributes: ["userId", "name", "phone"],
+          },
+          {
+            model: Vehicle,
+            as: "Vehicle",
+            attributes: ["vehicleId", "make", "model", "plate_number"],
+          },
+        ],
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+  });
+
+  let cashTotal = 0;
+  let upiTotal = 0;
+  let cardTotal = 0;
+  let otherTotal = 0;
+  let grandTotal = 0;
+
+  const items = [];
+
+  // Process POS bookings
+  for (const b of posBookings) {
+    const amount = parseFloat(b.total_price) || 0;
+    grandTotal += amount;
+    const notes = b.incident_notes || "";
+    let mode = "CARD";
+    if (/CASH/i.test(notes)) {
+      mode = "CASH";
+      cashTotal += amount;
+    } else if (/UPI/i.test(notes)) {
+      mode = "UPI";
+      upiTotal += amount;
+    } else {
+      mode = "CARD";
+      cardTotal += amount;
+    }
+
+    items.push({
+      type: "POS_RENTAL",
+      reference_id: b.bookingId,
+      customer_name: b.Customer?.name || "Walk-In Guest",
+      customer_phone: b.Customer?.phone || "",
+      vehicle: `${b.Vehicle?.make || ""} ${b.Vehicle?.model || ""} (${b.Vehicle?.plate_number || ""})`.trim(),
+      payment_method: mode,
+      amount,
+      timestamp: b.createdAt,
+      description: `Walk-In Rental: ${b.Vehicle?.make || ""} ${b.Vehicle?.model || ""}`,
+    });
+  }
+
+  // Process post-trip counter penalties
+  for (const p of counterPenalties) {
+    const amount = Math.abs(parseFloat(p.amount)) || 0;
+    grandTotal += amount;
+    const desc = p.description || "";
+    let mode = "CARD";
+    if (/CASH/i.test(desc)) {
+      mode = "CASH";
+      cashTotal += amount;
+    } else if (/UPI/i.test(desc)) {
+      mode = "UPI";
+      upiTotal += amount;
+    } else {
+      mode = "CARD";
+      cardTotal += amount;
+    }
+
+    items.push({
+      type: p.type,
+      reference_id: p.transactionId,
+      customer_name: p.Booking?.Customer?.name || "Counter Customer",
+      customer_phone: p.Booking?.Customer?.phone || "",
+      vehicle: `${p.Booking?.Vehicle?.make || ""} ${p.Booking?.Vehicle?.model || ""} (${p.Booking?.Vehicle?.plate_number || ""})`.trim(),
+      payment_method: mode,
+      amount,
+      timestamp: p.createdAt,
+      description: p.description,
+    });
+  }
+
+  return {
+    cash_in_register: cashTotal,
+    upi_qr_collected: upiTotal,
+    card_pos_terminal: cardTotal,
+    other_collected: otherTotal,
+    grand_total_settlement: grandTotal,
+    pos_bookings_count: posBookings.length,
+    penalties_count: counterPenalties.length,
+    total_transactions_count: items.length,
+    items,
+  };
+};
+
+// Resolve Emergency for Hub
+const resolveHubEmergency = async (bookingId, hubId, { resolution, managerNotes }) => {
+  const booking = await Booking.findOne({
+    where: {
+      bookingId,
+      [Op.or]: [{ pickup_hub_id: hubId }, { dropoff_hub_id: hubId }],
+      status: "EMERGENCY_HOLD",
+    },
+    include: [{ model: Vehicle, as: "Vehicle" }],
+  });
+
+  if (!booking) {
+    const error = new Error("Active emergency booking not found for this station.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const timestamp = new Date().toISOString();
+  const resolutionNote = `\n[Emergency Resolved on ${timestamp}]: Action: ${resolution}. Notes: ${managerNotes || "Resolved by Hub Manager at station."}`;
+
+  if (resolution === "RESUME_TRIP") {
+    booking.status = "ACTIVE_TRIP";
+    booking.incident_notes = (booking.incident_notes || "") + resolutionNote;
+    await booking.save();
+    if (booking.Vehicle) {
+      await booking.Vehicle.update({ status: "IN_USE" });
+    }
+  } else if (resolution === "TOW_TO_MAINTENANCE" || resolution === "COMPLETED") {
+    booking.status = "COMPLETED";
+    booking.incident_notes = (booking.incident_notes || "") + resolutionNote;
+    await booking.save();
+    if (booking.Vehicle) {
+      await booking.Vehicle.update({
+        status: "MAINTENANCE",
+        current_hub_id: hubId,
+      });
+    }
+  } else if (resolution === "CANCELLED") {
+    booking.status = "CANCELLED";
+    booking.incident_notes = (booking.incident_notes || "") + resolutionNote;
+    await booking.save();
+    if (booking.Vehicle) {
+      await booking.Vehicle.update({
+        status: "MAINTENANCE",
+        current_hub_id: hubId,
+      });
+    }
+  } else {
+    const error = new Error("Invalid resolution type.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return booking;
+};
+
 module.exports = {
   findHubByManagerId,
   getDailySchedule,
@@ -395,4 +621,7 @@ module.exports = {
   findLostItemById,
   findLostItemsForBookingCar,
   updateLostItemRecord,
+  getShiftSettlement,
+  resolveHubEmergency,
 };
+
