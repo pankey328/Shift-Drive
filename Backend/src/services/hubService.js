@@ -2,35 +2,88 @@ const hubRepository = require("../repositories/hubRepository");
 const userRepository = require("../repositories/userRepository");
 const { getCoordinatesFromAddress } = require("../utils/mapbox");
 
+function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return parseFloat((R * c).toFixed(2));
+}
+
 const createNewHub = async ({
   name,
   city,
   address,
   opening_time,
   closing_time,
+  capacity = 20,
+  latitude = null,
+  longitude = null,
   manager_id,
 }) => {
-  // Convert street address to Lat/Lng via Mapbox
-  const { latitude, longitude } = await getCoordinatesFromAddress(
-    `${address}, ${city}`,
-  );
+  let finalLat = latitude ? parseFloat(latitude) : null;
+  let finalLng = longitude ? parseFloat(longitude) : null;
+
+  // If coordinates were not explicitly pinned on map, geocode via Mapbox
+  if (!finalLat || !finalLng || isNaN(finalLat) || isNaN(finalLng)) {
+    const coords = await getCoordinatesFromAddress(`${address}, ${city}`);
+    finalLat = coords.latitude;
+    finalLng = coords.longitude;
+  }
 
   const newHub = await hubRepository.createHub({
     name,
     city,
     address,
-    latitude,
-    longitude,
+    latitude: finalLat,
+    longitude: finalLng,
     opening_time,
     closing_time,
+    capacity: parseInt(capacity, 10) || 20,
     ...(manager_id && { manager_id }),
   });
 
   return newHub;
 };
 
-const getActiveHubs = async () => {
-  return await hubRepository.getAllHubs();
+const getActiveHubs = async (userCoords = null) => {
+  const hubs = await hubRepository.getAllHubs();
+
+  if (userCoords && userCoords.lat && userCoords.lng) {
+    const userLat = parseFloat(userCoords.lat);
+    const userLng = parseFloat(userCoords.lng);
+
+    if (!isNaN(userLat) && !isNaN(userLng)) {
+      return hubs
+        .map((hub) => {
+          const hubData = hub.toJSON ? hub.toJSON() : { ...hub };
+          if (hubData.latitude && hubData.longitude) {
+            hubData.distance_km = calculateHaversineDistance(
+              userLat,
+              userLng,
+              parseFloat(hubData.latitude),
+              parseFloat(hubData.longitude)
+            );
+          } else {
+            hubData.distance_km = null;
+          }
+          return hubData;
+        })
+        .sort((a, b) => {
+          if (a.distance_km === null) return 1;
+          if (b.distance_km === null) return -1;
+          return a.distance_km - b.distance_km;
+        });
+    }
+  }
+
+  return hubs;
 };
 
 const updateHubDetails = async (hubId, updateData) => {
@@ -43,11 +96,15 @@ const updateHubDetails = async (hubId, updateData) => {
 
   const payload = { ...updateData };
 
-  // Recompute Mapbox geocoding if address or city was changed
-  if (
+  // Explicit pinned GPS coordinates take precedence
+  if (updateData.latitude !== undefined && updateData.longitude !== undefined) {
+    payload.latitude = parseFloat(updateData.latitude);
+    payload.longitude = parseFloat(updateData.longitude);
+  } else if (
     (updateData.address && updateData.address !== existingHub.address) ||
     (updateData.city && updateData.city !== existingHub.city)
   ) {
+    // Recompute Mapbox geocoding if address or city was changed and no explicit coords provided
     const targetAddress = updateData.address || existingHub.address;
     const targetCity = updateData.city || existingHub.city;
     const { latitude, longitude } = await getCoordinatesFromAddress(

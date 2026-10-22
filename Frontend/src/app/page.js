@@ -17,6 +17,9 @@ import {
   Fuel,
   Users,
   Search,
+  Crosshair,
+  Loader2,
+  Navigation,
 } from "lucide-react";
 
 export default function HomePage() {
@@ -35,6 +38,47 @@ export default function HomePage() {
 
   // Fleet category filter tab
   const [selectedCategory, setSelectedCategory] = useState("ALL");
+
+  // Location & Proximity State
+  const [userLocation, setUserLocation] = useState(null);
+  const [locatingUser, setLocatingUser] = useState(false);
+  const [locationError, setLocationError] = useState("");
+
+  const detectNearestHubs = (showError = false) => {
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      if (showError) setLocationError("Geolocation is not supported by your browser.");
+      return;
+    }
+    setLocatingUser(true);
+    setLocationError("");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setUserLocation({ lat: latitude, lng: longitude });
+        try {
+          const res = await api.get(`/hubs?lat=${latitude}&lng=${longitude}`);
+          if (res.data?.data && Array.isArray(res.data.data)) {
+            setHubs(res.data.data);
+            if (res.data.data.length > 0) {
+              setPickupHubId(res.data.data[0].hubId);
+              setDropoffHubId(res.data.data[0].hubId);
+            }
+          }
+        } catch (err) {
+          console.error("Proximity hubs fetch error:", err);
+        } finally {
+          setLocatingUser(false);
+        }
+      },
+      (err) => {
+        if (showError) {
+          setLocationError("Location permission denied. Showing all standard hubs.");
+        }
+        setLocatingUser(false);
+      },
+      { timeout: 7000 }
+    );
+  };
 
   useEffect(() => {
     // Set default dates (tomorrow and day after)
@@ -59,7 +103,6 @@ export default function HomePage() {
         }
       } catch (err) {
         console.warn("Using fallback hub list:", err.message);
-        // Fallback hubs
         const fallback = [
           {
             hubId: "hub-1",
@@ -95,6 +138,7 @@ export default function HomePage() {
     };
 
     fetchHubs();
+    detectNearestHubs(false);
   }, []);
 
   const handleSearchFleet = (e) => {
@@ -219,9 +263,24 @@ export default function HomePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Pickup Hub */}
               <div className="space-y-1.5">
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-neutral-300">
-                  <MapPin className="w-3.5 h-3.5 text-emerald-400" /> Pickup Station
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-neutral-300">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-400" /> Pickup Station
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => detectNearestHubs(true)}
+                    disabled={locatingUser}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
+                  >
+                    {locatingUser ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Crosshair className="w-3 h-3" />
+                    )}
+                    <span>{userLocation ? "Refresh Nearest" : "Find Nearest Hub"}</span>
+                  </button>
+                </div>
                 <select
                   value={pickupHubId}
                   onChange={(e) => setPickupHubId(e.target.value)}
@@ -230,10 +289,21 @@ export default function HomePage() {
                 >
                   {hubs.map((h) => (
                     <option key={h.hubId} value={h.hubId}>
-                      {h.name} ({h.city})
+                      {h.name} ({h.city}){h.distance_km !== undefined && h.distance_km !== null ? ` — ${h.distance_km} km away` : ""}
                     </option>
                   ))}
                 </select>
+                {userLocation && hubs.length > 0 && hubs[0].distance_km !== undefined && hubs[0].distance_km !== null && (
+                  <p className="text-[11px] text-emerald-400/90 flex items-center gap-1 font-medium">
+                    <Navigation className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span>Nearest: {hubs[0].name} ({hubs[0].distance_km} km from you)</span>
+                  </p>
+                )}
+                {locationError && (
+                  <p className="text-[11px] text-amber-400/90 font-medium">
+                    {locationError}
+                  </p>
+                )}
               </div>
 
               {/* Dropoff Hub */}

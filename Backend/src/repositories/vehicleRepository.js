@@ -255,13 +255,23 @@ const getHubFleetDetailsWithSummary = async (hubId) => {
 };
 
 const getAllActiveVehicles = async (filters = {}) => {
-  const where = { status: "ACTIVE" };
+  const where = {};
+
+  if (filters.status && filters.status.toUpperCase() === "ALL") {
+    // Return all statuses for superadmin master catalog
+  } else if (filters.status) {
+    where.status = filters.status;
+  } else {
+    where.status = "ACTIVE";
+  }
+
   if (filters.category && filters.category !== "ALL") {
     where.vehicle_class = filters.category;
   }
-  if (filters.hubId) {
+  if (filters.hubId && filters.hubId !== "ALL") {
     where.current_hub_id = filters.hubId;
   }
+
   return await Vehicle.findAll({
     where,
     include: [
@@ -270,8 +280,23 @@ const getAllActiveVehicles = async (filters = {}) => {
         as: "CurrentHub",
         attributes: ["hubId", "name", "city", "address", "status"],
       },
+      {
+        model: Booking,
+        as: "Bookings",
+        where: {
+          status: { [Op.in]: ["ACTIVE_TRIP", "EMERGENCY_HOLD"] },
+        },
+        required: false,
+        include: [
+          {
+            model: User,
+            as: "Customer",
+            attributes: ["userId", "name", "phone", "email"],
+          },
+        ],
+      },
     ],
-    order: [["base_daily_rate", "DESC"]],
+    order: [["createdAt", "DESC"]],
   });
 };
 

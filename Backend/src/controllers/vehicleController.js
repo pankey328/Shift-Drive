@@ -194,8 +194,8 @@ const getVehicleById = async (req, res) => {
 
 const getAllVehicles = async (req, res) => {
   try {
-    const { category, hubId } = req.query;
-    const vehicles = await vehicleService.getAllFleet({ category, hubId });
+    const { category, hubId, status } = req.query;
+    const vehicles = await vehicleService.getAllFleet({ category, hubId, status });
     return res.status(200).json({
       success: true,
       count: vehicles.length,

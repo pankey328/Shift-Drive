@@ -164,7 +164,7 @@ const forceCancelBookingRecord = async (bookingId, { cancellation_reason, incide
 // List all bookings for admin with filters
 const getAllBookingsAdmin = async (filters = {}) => {
   const where = {};
-  if (filters.status) where.status = filters.status;
+  if (filters.status && filters.status !== "ALL") where.status = filters.status;
   if (filters.userId) where.user_id = filters.userId;
   if (filters.vehicleId) where.vehicle_id = filters.vehicleId;
 

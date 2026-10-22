@@ -2,8 +2,17 @@ const hubService = require("../services/hubService");
 
 const createHub = async (req, res) => {
   try {
-    const { name, city, address, opening_time, closing_time, manager_id } =
-      req.body;
+    const {
+      name,
+      city,
+      address,
+      opening_time,
+      closing_time,
+      capacity,
+      latitude,
+      longitude,
+      manager_id,
+    } = req.body;
 
     if (!(name && city && address && opening_time && closing_time)) {
       return res.status(400).json({ message: "All hub fields are required" });
@@ -15,6 +24,9 @@ const createHub = async (req, res) => {
       address,
       opening_time,
       closing_time,
+      capacity,
+      latitude,
+      longitude,
       manager_id,
     });
     return res.status(201).json({ success: true, data: hub });
@@ -26,7 +38,9 @@ const createHub = async (req, res) => {
 
 const getHubs = async (req, res) => {
   try {
-    const hubs = await hubService.getActiveHubs();
+    const { lat, lng } = req.query;
+    const userCoords = lat && lng ? { lat, lng } : null;
+    const hubs = await hubService.getActiveHubs(userCoords);
     return res.status(200).json({ success: true, data: hubs });
   } catch (error) {
     const statusCode = error.statusCode || 500;

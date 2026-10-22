@@ -29,6 +29,7 @@ app.use("/api/wallet", walletRoutes);
 app.use("/api/hubs", hubRoutes);
 app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/bookings", bookingRoutes);
+app.use("/api/booking", bookingRoutes);
 app.use("/api/inspections", inspectionRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/admin/users", adminUserRoutes);
