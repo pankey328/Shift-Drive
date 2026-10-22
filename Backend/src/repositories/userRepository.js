@@ -1,4 +1,4 @@
-const User = require("../models/User");
+const { User, Hub, Booking, Vehicle } = require("../models");
 
 const findUserByEmail = async (email) => {
   return await User.findOne({ where: { email } });
@@ -130,7 +130,41 @@ const getAllUsersList = async (filters = {}) => {
   return await User.findAll({
     where,
     attributes: { exclude: ["password", "otp", "otpExpiry"] },
+    include: [
+      {
+        model: Hub,
+        as: "ManagedHub",
+        attributes: ["hubId", "name", "city", "status"],
+      },
+    ],
     order: [["createdAt", "DESC"]],
+  });
+};
+
+const findUserAuditDetails = async (userId) => {
+  return await User.findByPk(userId, {
+    attributes: { exclude: ["password", "otp", "otpExpiry"] },
+    include: [
+      {
+        model: Hub,
+        as: "ManagedHub",
+        attributes: ["hubId", "name", "city", "address", "status"],
+      },
+      {
+        model: Booking,
+        as: "Bookings",
+        attributes: ["bookingId", "status", "start_time", "end_time", "total_price", "createdAt"],
+        limit: 10,
+        order: [["createdAt", "DESC"]],
+        include: [
+          {
+            model: Vehicle,
+            as: "Vehicle",
+            attributes: ["vehicleId", "make", "model", "plate_number", "gallery_urls"],
+          },
+        ],
+      },
+    ],
   });
 };
 
@@ -184,6 +218,7 @@ module.exports = {
   getAllUsersList,
   createHubManager,
   updatePermanentPassword,
+  findUserAuditDetails,
 };
 
 

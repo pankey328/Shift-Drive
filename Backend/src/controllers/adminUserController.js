@@ -75,9 +75,71 @@ const fetchUsers = async (req, res) => {
   }
 };
 
+const handleOnboardStaff = async (req, res) => {
+  try {
+    const { name, email, phone, password, role, hubId } = req.body;
+    const result = await adminUserService.onboardStaff({
+      name,
+      email,
+      phone,
+      password,
+      role,
+      hubId,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Staff account created successfully for ${result.name} (${result.role}).`,
+      data: result,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const handleUpdateUserRole = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { role, hubId } = req.body;
+
+    const updatedUser = await adminUserService.changeUserRole(userId, {
+      role,
+      hubId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `User role updated to ${role}.`,
+      data: updatedUser,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const handleGetUserDetails = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const userDetails = await adminUserService.getUserAuditDetails(userId);
+
+    return res.status(200).json({
+      success: true,
+      data: userDetails,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   fetchPendingKyc,
   handleReviewKyc,
   handleToggleAccount,
   fetchUsers,
+  handleOnboardStaff,
+  handleUpdateUserRole,
+  handleGetUserDetails,
 };
