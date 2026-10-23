@@ -27,6 +27,8 @@ import {
   IndianRupee,
   Layers,
   ArrowRight,
+  Upload,
+  Trash2,
 } from "lucide-react";
 
 export default function SuperadminFleetPage() {
@@ -53,9 +55,17 @@ export default function SuperadminFleetPage() {
     fuel_type: "Petrol",
     transmission: "Automatic",
   });
+  const [vehicleImages, setVehicleImages] = useState([]);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
   const [addSuccess, setAddSuccess] = useState("");
+
+  // Vehicle Gallery Modal
+  const [galleryVehicle, setGalleryVehicle] = useState(null);
+  const [newGalleryFiles, setNewGalleryFiles] = useState([]);
+  const [uploadingGallery, setUploadingGallery] = useState(false);
+  const [galleryError, setGalleryError] = useState("");
+  const [gallerySuccess, setGallerySuccess] = useState("");
 
   // Transfer Vehicle Modal
   const [transferVehicle, setTransferVehicle] = useState(null);
@@ -142,10 +152,29 @@ export default function SuperadminFleetPage() {
 
       const res = await api.post("/vehicles", payload);
       if (res.data?.success) {
-        setAddSuccess(`Vehicle "${payload.make} ${payload.model}" provisioned successfully!`);
+        const newVehicleId = res.data.data?.vehicleId;
+
+        // Upload gallery images if any were chosen
+        if (vehicleImages.length > 0 && newVehicleId) {
+          const formData = new FormData();
+          vehicleImages.forEach((img) => formData.append("images", img));
+          try {
+            await api.post(`/vehicles/${newVehicleId}/images`, formData, {
+              headers: { "Content-Type": "multipart/form-data" },
+            });
+          } catch (uploadErr) {
+            console.error("Failed to upload vehicle photos:", uploadErr);
+          }
+        }
+
+        setAddSuccess(
+          `Vehicle "${payload.make} ${payload.model}" provisioned successfully${vehicleImages.length > 0 ? ` with ${vehicleImages.length} photo(s)` : ""
+          }!`
+        );
         setTimeout(() => {
           setShowAddModal(false);
           setAddSuccess("");
+          setVehicleImages([]);
           setAddForm({
             make: "",
             model: "",
@@ -164,6 +193,57 @@ export default function SuperadminFleetPage() {
       setAddError(err.response?.data?.message || "Failed to add vehicle to fleet.");
     } finally {
       setAdding(false);
+    }
+  };
+
+  const handleUploadNewGallery = async (e) => {
+    e.preventDefault();
+    if (!galleryVehicle || newGalleryFiles.length === 0) return;
+
+    setUploadingGallery(true);
+    setGalleryError("");
+    setGallerySuccess("");
+
+    try {
+      const formData = new FormData();
+      newGalleryFiles.forEach((file) => formData.append("images", file));
+
+      const res = await api.post(`/vehicles/${galleryVehicle.vehicleId}/images`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      if (res.data?.success) {
+        setGallerySuccess(`${newGalleryFiles.length} photo(s) uploaded successfully!`);
+        setNewGalleryFiles([]);
+        const updatedVehicle = res.data.data;
+        setGalleryVehicle(updatedVehicle);
+        setVehicles((prev) =>
+          prev.map((v) => (v.vehicleId === updatedVehicle.vehicleId ? updatedVehicle : v))
+        );
+      }
+    } catch (err) {
+      setGalleryError(err.response?.data?.message || "Failed to upload vehicle photos.");
+    } finally {
+      setUploadingGallery(false);
+    }
+  };
+
+  const handleRemoveGalleryImage = async (imgUrl) => {
+    if (!galleryVehicle) return;
+    try {
+      const remainingUrls = (galleryVehicle.gallery_urls || []).filter((u) => u !== imgUrl);
+      const res = await api.put(`/vehicles/${galleryVehicle.vehicleId}`, {
+        gallery_urls: remainingUrls,
+      });
+      if (res.data?.success) {
+        const updated = res.data.data;
+        setGalleryVehicle(updated);
+        setVehicles((prev) =>
+          prev.map((v) => (v.vehicleId === updated.vehicleId ? updated : v))
+        );
+      }
+    } catch (err) {
+      setGalleryError(err.response?.data?.message || "Failed to remove vehicle photo.");
     }
   };
 
@@ -458,42 +538,42 @@ export default function SuperadminFleetPage() {
           selectedClassFilter !== "ALL" ||
           selectedStatusFilter !== "ALL" ||
           searchQuery) && (
-          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-neutral-800 text-[11px] text-neutral-400">
-            <span>Filtered by:</span>
-            {selectedHubFilter !== "ALL" && (
-              <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                Hub: {hubs.find((h) => h.hubId === selectedHubFilter)?.name || selectedHubFilter}
-              </span>
-            )}
-            {selectedClassFilter !== "ALL" && (
-              <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                Class: {selectedClassFilter}
-              </span>
-            )}
-            {selectedStatusFilter !== "ALL" && (
-              <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                Status: {selectedStatusFilter}
-              </span>
-            )}
-            {searchQuery && (
-              <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                &ldquo;{searchQuery}&rdquo;
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedHubFilter("ALL");
-                setSelectedClassFilter("ALL");
-                setSelectedStatusFilter("ALL");
-                setSearchQuery("");
-              }}
-              className="text-purple-400 hover:text-purple-300 font-semibold underline cursor-pointer ml-1"
-            >
-              Reset Filters
-            </button>
-          </div>
-        )}
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-neutral-800 text-[11px] text-neutral-400">
+              <span>Filtered by:</span>
+              {selectedHubFilter !== "ALL" && (
+                <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                  Hub: {hubs.find((h) => h.hubId === selectedHubFilter)?.name || selectedHubFilter}
+                </span>
+              )}
+              {selectedClassFilter !== "ALL" && (
+                <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                  Class: {selectedClassFilter}
+                </span>
+              )}
+              {selectedStatusFilter !== "ALL" && (
+                <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                  Status: {selectedStatusFilter}
+                </span>
+              )}
+              {searchQuery && (
+                <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                  &ldquo;{searchQuery}&rdquo;
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedHubFilter("ALL");
+                  setSelectedClassFilter("ALL");
+                  setSelectedStatusFilter("ALL");
+                  setSearchQuery("");
+                }}
+                className="text-purple-400 hover:text-purple-300 font-semibold underline cursor-pointer ml-1"
+              >
+                Reset Filters
+              </button>
+            </div>
+          )}
       </div>
 
       {/* Fleet Table */}
@@ -536,8 +616,16 @@ export default function SuperadminFleetPage() {
                     {/* Make & Model */}
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center justify-center text-neutral-400 font-bold flex-shrink-0">
-                          <Car className="w-5 h-5 text-purple-400" />
+                        <div className="w-12 h-10 rounded-xl bg-neutral-950 border border-neutral-800 overflow-hidden flex items-center justify-center text-neutral-400 font-bold flex-shrink-0">
+                          {vehicle.gallery_urls && vehicle.gallery_urls.length > 0 ? (
+                            <img
+                              src={vehicle.gallery_urls[0]}
+                              alt={`${vehicle.make} ${vehicle.model}`}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Car className="w-5 h-5 text-purple-400" />
+                          )}
                         </div>
                         <div>
                           <div className="font-bold text-white text-sm">
@@ -591,35 +679,33 @@ export default function SuperadminFleetPage() {
                     {/* Status Badge */}
                     <td className="px-4 py-4">
                       <span
-                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border inline-flex items-center gap-1.5 ${
-                          vehicle.status === "ACTIVE"
-                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                            : vehicle.status === "IN_USE"
+                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border inline-flex items-center gap-1.5 ${vehicle.status === "ACTIVE"
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                          : vehicle.status === "IN_USE"
                             ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
                             : vehicle.status === "MAINTENANCE"
-                            ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                            : "bg-neutral-800 border-neutral-700 text-neutral-400"
-                        }`}
+                              ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                              : "bg-neutral-800 border-neutral-700 text-neutral-400"
+                          }`}
                       >
                         <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            vehicle.status === "ACTIVE"
-                              ? "bg-emerald-400"
-                              : vehicle.status === "IN_USE"
+                          className={`w-1.5 h-1.5 rounded-full ${vehicle.status === "ACTIVE"
+                            ? "bg-emerald-400"
+                            : vehicle.status === "IN_USE"
                               ? "bg-blue-400 animate-pulse"
                               : vehicle.status === "MAINTENANCE"
-                              ? "bg-amber-400"
-                              : "bg-neutral-500"
-                          }`}
+                                ? "bg-amber-400"
+                                : "bg-neutral-500"
+                            }`}
                         />
                         <span>
                           {vehicle.status === "ACTIVE"
                             ? "Ready on Lot"
                             : vehicle.status === "IN_USE"
-                            ? "On Road"
-                            : vehicle.status === "MAINTENANCE"
-                            ? "In Bay"
-                            : "Retired"}
+                              ? "On Road"
+                              : vehicle.status === "MAINTENANCE"
+                                ? "In Bay"
+                                : "Retired"}
                         </span>
                       </span>
                     </td>
@@ -667,11 +753,10 @@ export default function SuperadminFleetPage() {
                             setTransferSuccess("");
                           }}
                           disabled={vehicle.status === "IN_USE"}
-                          className={`p-2 rounded-xl transition-all cursor-pointer ${
-                            vehicle.status === "IN_USE"
-                              ? "bg-neutral-950 text-neutral-600 cursor-not-allowed"
-                              : "bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white"
-                          }`}
+                          className={`p-2 rounded-xl transition-all cursor-pointer ${vehicle.status === "IN_USE"
+                            ? "bg-neutral-950 text-neutral-600 cursor-not-allowed"
+                            : "bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white"
+                            }`}
                           title={
                             vehicle.status === "IN_USE"
                               ? "Cannot transfer while vehicle is currently in an active trip"
@@ -702,6 +787,21 @@ export default function SuperadminFleetPage() {
                           title="Change Status / Service Bay"
                         >
                           <Wrench className="w-3.5 h-3.5 text-amber-400" />
+                        </button>
+
+                        {/* Photo Gallery button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGalleryVehicle(vehicle);
+                            setNewGalleryFiles([]);
+                            setGalleryError("");
+                            setGallerySuccess("");
+                          }}
+                          className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white transition-all cursor-pointer"
+                          title={`Manage Vehicle Photos (${vehicle.gallery_urls?.length || 0})`}
+                        >
+                          <ImageIcon className="w-3.5 h-3.5 text-blue-400" />
                         </button>
 
                         {/* Edit details button */}
@@ -876,6 +976,64 @@ export default function SuperadminFleetPage() {
                     <option value="Manual">Manual</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Photo Upload Zone */}
+              <div className="space-y-1.5 pt-1">
+                <label className="text-neutral-300 font-semibold flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
+                    Vehicle Gallery Photos (Up to 5 images)
+                  </span>
+                  <span className="text-[10px] text-neutral-500 font-normal">Optional</span>
+                </label>
+                <div className="border border-dashed border-neutral-700 hover:border-purple-500/60 transition-colors rounded-2xl p-3 text-center bg-neutral-950/60 cursor-pointer relative">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []).slice(0, 5);
+                      setVehicleImages(files);
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div className="flex flex-col items-center justify-center gap-1 text-neutral-400">
+                    <Upload className="w-5 h-5 text-neutral-500" />
+                    <p className="text-[11px] font-medium text-neutral-300">
+                      {vehicleImages.length > 0
+                        ? `${vehicleImages.length} image(s) selected for upload`
+                        : "Click or drag vehicle photos here"}
+                    </p>
+                    <p className="text-[10px] text-neutral-500">PNG, JPG, WebP up to 5MB each (Max 5 photos)</p>
+                  </div>
+                </div>
+
+                {vehicleImages.length > 0 && (
+                  <div className="flex items-center gap-2 pt-1 overflow-x-auto">
+                    {vehicleImages.map((file, idx) => (
+                      <div
+                        key={idx}
+                        className="relative w-14 h-12 rounded-lg overflow-hidden border border-neutral-700 flex-shrink-0 group"
+                      >
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt={`preview ${idx}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setVehicleImages(vehicleImages.filter((_, i) => i !== idx))
+                          }
+                          className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/80 text-white hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {addSuccess && (
@@ -1230,6 +1388,126 @@ export default function SuperadminFleetPage() {
                 className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/25 transition-all cursor-pointer"
               >
                 {editing ? "Saving Changes..." : "Save Vehicle Modifications"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: VEHICLE GALLERY MANAGEMENT                                      */}
+      {/* ========================================================================= */}
+      {galleryVehicle && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-lg w-full rounded-3xl bg-neutral-900 border border-neutral-800 p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-blue-400" />
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    {galleryVehicle.make} {galleryVehicle.model} Photos
+                  </h3>
+                  <span className="text-[10px] font-mono text-neutral-400">
+                    {galleryVehicle.plate_number} &bull; {galleryVehicle.gallery_urls?.length || 0} image(s) on file
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGalleryVehicle(null)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Current Images Grid */}
+            <div className="space-y-2">
+              <label className="text-neutral-300 font-semibold text-xs block">
+                Current Vehicle Photos
+              </label>
+              {galleryVehicle.gallery_urls && galleryVehicle.gallery_urls.length > 0 ? (
+                <div className="grid grid-cols-3 gap-2.5">
+                  {galleryVehicle.gallery_urls.map((url, i) => (
+                    <div
+                      key={i}
+                      className="relative rounded-xl overflow-hidden border border-neutral-800 group aspect-video bg-neutral-950"
+                    >
+                      <img
+                        src={url}
+                        alt={`${galleryVehicle.model} ${i + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveGalleryImage(url)}
+                        className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-red-950/80 border border-red-800/80 text-red-300 hover:bg-red-900 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                        title="Remove photo from vehicle"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                      {i === 0 && (
+                        <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/75 text-[9px] font-bold text-purple-300">
+                          Cover
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 text-center text-xs text-neutral-500">
+                  No photos uploaded for this vehicle yet.
+                </div>
+              )}
+            </div>
+
+            {/* Upload Additional Images Form */}
+            <form onSubmit={handleUploadNewGallery} className="space-y-3 pt-2 border-t border-neutral-800">
+              <div className="space-y-1">
+                <label className="text-neutral-300 font-semibold text-xs block">
+                  Add More Photos
+                </label>
+                <div className="border border-dashed border-neutral-700 hover:border-blue-500/60 transition-colors rounded-2xl p-3 text-center bg-neutral-950/60 cursor-pointer relative">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []).slice(0, 5);
+                      setNewGalleryFiles(files);
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div className="flex flex-col items-center justify-center gap-1 text-neutral-400">
+                    <Upload className="w-5 h-5 text-blue-400" />
+                    <p className="text-[11px] font-medium text-neutral-300">
+                      {newGalleryFiles.length > 0
+                        ? `${newGalleryFiles.length} new photo(s) selected`
+                        : "Click to select additional photos"}
+                    </p>
+                    <p className="text-[10px] text-neutral-500">Auto-compressed and uploaded to Cloudinary</p>
+                  </div>
+                </div>
+              </div>
+
+              {gallerySuccess && (
+                <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-800 text-xs text-emerald-400">
+                  {gallerySuccess}
+                </div>
+              )}
+
+              {galleryError && (
+                <div className="p-2.5 rounded-xl bg-red-950/40 border border-red-800 text-xs text-red-400">
+                  {galleryError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={uploadingGallery || newGalleryFiles.length === 0}
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/25 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {uploadingGallery ? "Uploading Photos to Cloudinary..." : "Upload Selected Photos"}
               </button>
             </form>
           </div>

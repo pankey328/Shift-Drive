@@ -92,7 +92,8 @@ function FleetContent() {
 
   const detectNearestHubs = (showError = false) => {
     if (typeof window === "undefined" || !navigator.geolocation) {
-      if (showError) setLocationError("Geolocation is not supported by your browser.");
+      if (showError)
+        setLocationError("Geolocation is not supported by your browser.");
       return;
     }
     setLocatingUser(true);
@@ -110,9 +111,11 @@ function FleetContent() {
               setPickupHubId(nearestHubId);
               setDropoffHubId(nearestHubId);
               // Auto-trigger search for nearest hub if dates available
-              const sDate = pickupDate || new Date().toISOString().split("T")[0];
+              const sDate =
+                pickupDate || new Date().toISOString().split("T")[0];
               const sTime = `${sDate}T${pickupTime || "10:00"}:00`;
-              const dDate = dropoffDate || new Date().toISOString().split("T")[0];
+              const dDate =
+                dropoffDate || new Date().toISOString().split("T")[0];
               const eTime = `${dDate}T${dropoffTime || "18:00"}:00`;
               fetchFleet(nearestHubId, sTime, eTime);
             }
@@ -125,11 +128,13 @@ function FleetContent() {
       },
       (err) => {
         if (showError) {
-          setLocationError("Location permission denied. Showing all standard hubs.");
+          setLocationError(
+            "Location permission denied. Showing all standard hubs.",
+          );
         }
         setLocatingUser(false);
       },
-      { timeout: 7000 }
+      { timeout: 7000 },
     );
   };
 
@@ -184,7 +189,7 @@ function FleetContent() {
       console.warn("Search fleet error:", err.response?.data || err.message);
       setSearchError(
         err.response?.data?.message ||
-        "Could not check vehicle availability for the selected station and time."
+          "Could not check vehicle availability for the selected station and time.",
       );
       // fetch all active vehicles
       try {
@@ -263,7 +268,10 @@ function FleetContent() {
     return vehicles
       .filter((car) => {
         // Category filter
-        if (selectedCategory !== "ALL" && car.vehicle_class !== selectedCategory) {
+        if (
+          selectedCategory !== "ALL" &&
+          car.vehicle_class !== selectedCategory
+        ) {
           return false;
         }
 
@@ -276,7 +284,8 @@ function FleetContent() {
         // Transmission filter
         if (selectedTransmission !== "ALL") {
           const carTrans = (car.transmission || "").toLowerCase();
-          if (!carTrans.includes(selectedTransmission.toLowerCase())) return false;
+          if (!carTrans.includes(selectedTransmission.toLowerCase()))
+            return false;
         }
 
         // Text search
@@ -326,7 +335,9 @@ function FleetContent() {
                 Available Fleet Catalog
               </h1>
               <p className="text-xs sm:text-sm text-neutral-400 font-light mt-0.5">
-                Every vehicle includes a mandatory 2-hour pre-trip safety buffer, clean inspection certification, and 100% wallet refund guarantee.
+                Every vehicle includes a mandatory 2-hour pre-trip safety
+                buffer, clean inspection certification, and 100% wallet refund
+                guarantee.
               </p>
             </div>
 
@@ -355,7 +366,8 @@ function FleetContent() {
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-1 text-[11px] font-semibold text-neutral-300">
-                  <MapPin className="w-3.5 h-3.5 text-emerald-400" /> Pickup Station
+                  <MapPin className="w-3.5 h-3.5 text-emerald-400" /> Pickup
+                  Station
                 </label>
                 <button
                   type="button"
@@ -368,7 +380,9 @@ function FleetContent() {
                   ) : (
                     <Crosshair className="w-3 h-3" />
                   )}
-                  <span>{userLocation ? "Recalculate Nearest" : "Near Me"}</span>
+                  <span>
+                    {userLocation ? "Recalculate Nearest" : "Near Me"}
+                  </span>
                 </button>
               </div>
               <select
@@ -379,16 +393,24 @@ function FleetContent() {
               >
                 {hubs.map((h) => (
                   <option key={h.hubId} value={h.hubId}>
-                    {h.name} ({h.city}){h.distance_km !== undefined && h.distance_km !== null ? ` — ${h.distance_km} km away` : ""}
+                    {h.name} ({h.city})
+                    {h.distance_km !== undefined && h.distance_km !== null
+                      ? ` — ${h.distance_km} km away`
+                      : ""}
                   </option>
                 ))}
               </select>
-              {userLocation && hubs.length > 0 && hubs[0].distance_km !== undefined && hubs[0].distance_km !== null && (
-                <p className="text-[10px] text-emerald-400/90 flex items-center gap-1 font-medium">
-                  <Navigation className="w-3 h-3 text-emerald-400 shrink-0" />
-                  <span>Nearest: {hubs[0].name} ({hubs[0].distance_km} km away)</span>
-                </p>
-              )}
+              {userLocation &&
+                hubs.length > 0 &&
+                hubs[0].distance_km !== undefined &&
+                hubs[0].distance_km !== null && (
+                  <p className="text-[10px] text-emerald-400/90 flex items-center gap-1 font-medium">
+                    <Navigation className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span>
+                      Nearest: {hubs[0].name} ({hubs[0].distance_km} km away)
+                    </span>
+                  </p>
+                )}
             </div>
 
             {/* Dropoff Hub */}
@@ -413,7 +435,8 @@ function FleetContent() {
             {/* Pickup Date & Time */}
             <div className="space-y-1">
               <label className="flex items-center gap-1 text-[11px] font-semibold text-neutral-300">
-                <Calendar className="w-3.5 h-3.5 text-emerald-400" /> Pickup Time
+                <Calendar className="w-3.5 h-3.5 text-emerald-400" /> Pickup
+                Time
               </label>
               <div className="flex gap-1.5">
                 <input
@@ -510,10 +533,11 @@ function FleetContent() {
                 key={cat}
                 type="button"
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${selectedCategory === cat
-                  ? "bg-white text-black shadow-md"
-                  : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
-                  }`}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  selectedCategory === cat
+                    ? "bg-white text-black shadow-md"
+                    : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
+                }`}
               >
                 {cat}
               </button>
@@ -585,18 +609,18 @@ function FleetContent() {
             selectedFuel !== "ALL" ||
             selectedTransmission !== "ALL" ||
             searchQuery) && (
-              <button
-                onClick={() => {
-                  setSelectedCategory("ALL");
-                  setSelectedFuel("ALL");
-                  setSelectedTransmission("ALL");
-                  setSearchQuery("");
-                }}
-                className="text-emerald-400 hover:underline cursor-pointer"
-              >
-                Reset Filters
-              </button>
-            )}
+            <button
+              onClick={() => {
+                setSelectedCategory("ALL");
+                setSelectedFuel("ALL");
+                setSelectedTransmission("ALL");
+                setSearchQuery("");
+              }}
+              className="text-emerald-400 hover:underline cursor-pointer"
+            >
+              Reset Filters
+            </button>
+          )}
         </div>
 
         {/* Vehicle Cards Grid */}
@@ -625,7 +649,8 @@ function FleetContent() {
               No Vehicles Available Matching Your Filters
             </h3>
             <p className="text-xs text-neutral-400 mt-1.5 max-w-md mx-auto">
-              Try adjusting your category, fuel type, or dates to find vehicles ready for dispatch.
+              Try adjusting your category, fuel type, or dates to find vehicles
+              ready for dispatch.
             </p>
             <button
               type="button"
@@ -648,7 +673,9 @@ function FleetContent() {
                 (car.gallery_urls && car.gallery_urls[0]) ||
                 car.image ||
                 "https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=800&q=80";
-              const dailyRate = parseFloat(car.base_daily_rate || car.rate || 0);
+              const dailyRate = parseFloat(
+                car.base_daily_rate || car.rate || 0,
+              );
               const totalEstimate =
                 dailyRate * rentalDays + (isOneWay ? 500 : 0);
               const carTag = car.tag || car.vehicle_class || "Available";
@@ -670,7 +697,8 @@ function FleetContent() {
               const checkoutParams = new URLSearchParams({
                 vehicleId: carId,
                 pickupHubId: pickupHubId || car.current_hub_id || "",
-                dropoffHubId: dropoffHubId || pickupHubId || car.current_hub_id || "",
+                dropoffHubId:
+                  dropoffHubId || pickupHubId || car.current_hub_id || "",
                 startTime: startDateTime,
                 endTime: endDateTime,
               });
@@ -678,10 +706,11 @@ function FleetContent() {
               return (
                 <div
                   key={carId}
-                  className={`group rounded-3xl bg-neutral-900/60 border overflow-hidden flex flex-col justify-between transition-all duration-300 ${isHighlighted
-                    ? "border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.25)] ring-1 ring-emerald-500/50"
-                    : "border-neutral-800/80 hover:border-emerald-500/40 hover:shadow-[0_10px_30px_rgba(16,185,129,0.1)]"
-                    }`}
+                  className={`group rounded-3xl bg-neutral-900/60 border overflow-hidden flex flex-col justify-between transition-all duration-300 ${
+                    isHighlighted
+                      ? "border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.25)] ring-1 ring-emerald-500/50"
+                      : "border-neutral-800/80 hover:border-emerald-500/40 hover:shadow-[0_10px_30px_rgba(16,185,129,0.1)]"
+                  }`}
                 >
                   <div>
                     {/* Image Banner */}
@@ -730,7 +759,9 @@ function FleetContent() {
                       {car.CurrentHub && (
                         <div className="flex items-center gap-1 text-[11px] text-neutral-400">
                           <MapPin className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                          <span className="truncate">{car.CurrentHub.name}</span>
+                          <span className="truncate">
+                            {car.CurrentHub.name}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -740,16 +771,21 @@ function FleetContent() {
                   <div className="p-5 pt-0 space-y-3">
                     <div className="flex items-end justify-between border-t border-neutral-800/60 pt-3">
                       <div>
-                        <span className="text-[11px] text-neutral-400">Daily Rate</span>
+                        <span className="text-[11px] text-neutral-400">
+                          Daily Rate
+                        </span>
                         <p className="text-base font-bold text-white">
                           ₹{dailyRate.toLocaleString("en-IN")}
-                          <span className="text-xs font-normal text-neutral-400">/day</span>
+                          <span className="text-xs font-normal text-neutral-400">
+                            /day
+                          </span>
                         </p>
                       </div>
 
                       <div className="text-right">
                         <span className="text-[10px] text-neutral-500">
-                          Est. Total ({rentalDays} {rentalDays === 1 ? "day" : "days"})
+                          Est. Total ({rentalDays}{" "}
+                          {rentalDays === 1 ? "day" : "days"})
                         </span>
                         <p className="text-sm font-semibold text-emerald-400">
                           ₹{totalEstimate.toLocaleString("en-IN")}

@@ -12,6 +12,7 @@ const addVehicle = async (req, res) => {
       seats,
       fuel_type,
       transmission,
+      gallery_urls,
     } = req.body;
 
     if (!(make && model && plate_number && base_daily_rate && current_hub_id)) {
@@ -30,6 +31,7 @@ const addVehicle = async (req, res) => {
       seats,
       fuel_type,
       transmission,
+      gallery_urls: Array.isArray(gallery_urls) ? gallery_urls : [],
     });
 
     return res.status(201).json({ success: true, data: vehicle });

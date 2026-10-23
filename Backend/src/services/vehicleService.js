@@ -13,6 +13,7 @@ const addNewVehicle = async ({
   seats = 5,
   fuel_type = "Petrol",
   transmission = "Automatic",
+  gallery_urls = [],
 }) => {
   return await vehicleRepository.createVehicle({
     make,
@@ -24,6 +25,7 @@ const addNewVehicle = async ({
     seats,
     fuel_type,
     transmission,
+    gallery_urls,
   });
 };
 
