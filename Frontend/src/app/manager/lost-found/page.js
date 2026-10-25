@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/api";
+import Pagination from "@/components/Pagination";
 import {
   Package,
   Building2,
@@ -11,6 +12,7 @@ import {
   X,
   RefreshCw,
   Upload,
+  Search,
 } from "lucide-react";
 
 export default function ManagerLostFoundPage() {
@@ -21,6 +23,29 @@ export default function ManagerLostFoundPage() {
   const [selectedHubId, setSelectedHubId] = useState("");
   const [lostItems, setLostItems] = useState([]);
   const [loadingLost, setLoadingLost] = useState(true);
+
+  // Filters & Pagination
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(6);
+  const [pagination, setPagination] = useState({
+    totalItems: 0,
+    totalPages: 1,
+    currentPage: 1,
+    limit: 6,
+  });
+
+  // Debounce search (800ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => {
     setMounted(true);
@@ -50,7 +75,13 @@ export default function ManagerLostFoundPage() {
         const hubs = res.data.data || [];
         let target = null;
         if (user?.role === "HUB_ADMIN") {
-          target = hubs.find((h) => h.manager_id === user.userId) || hubs[0];
+          const userIdentifier = user?.userId || user?.id;
+          const userEmail = user?.email?.toLowerCase().trim();
+          target = hubs.find((h) => {
+            const idMatch = userIdentifier && (h.manager_id === userIdentifier || h.Manager?.userId === userIdentifier);
+            const emailMatch = userEmail && h.Manager?.email?.toLowerCase().trim() === userEmail;
+            return idMatch || emailMatch;
+          }) || hubs[0];
         } else {
           target = hubs[0];
         }
@@ -65,21 +96,32 @@ export default function ManagerLostFoundPage() {
     }
   }, [user]);
 
-  // Fetch Lost Items
+  // Fetch Lost Items with search, filters, and pagination
   const fetchLostItems = useCallback(async () => {
     if (!selectedHubId) return;
     setLoadingLost(true);
     try {
-      const res = await api.get(`/hub-admin/lost-found?hubId=${selectedHubId}`);
+      const params = {
+        hubId: selectedHubId,
+        status: statusFilter !== "ALL" ? statusFilter : undefined,
+        category: categoryFilter !== "ALL" ? categoryFilter : undefined,
+        search: debouncedSearch.trim() || undefined,
+        page,
+        limit,
+      };
+      const res = await api.get("/hub-admin/lost-found", { params });
       if (res.data?.success) {
         setLostItems(res.data.data || []);
+        if (res.data.pagination) {
+          setPagination(res.data.pagination);
+        }
       }
     } catch (err) {
       console.error("Failed to load lost items:", err);
     } finally {
       setLoadingLost(false);
     }
-  }, [selectedHubId]);
+  }, [selectedHubId, statusFilter, categoryFilter, debouncedSearch, page, limit]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -204,6 +246,72 @@ export default function ManagerLostFoundPage() {
         </div>
       </div>
 
+      {/* Search & Filter Toolbar */}
+      <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search by item name, storage location, claimant, license plate..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500 transition-colors"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Status Dropdown */}
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+              className="px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white font-medium cursor-pointer"
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="UNCLAIMED">Unclaimed</option>
+              <option value="CLAIMED">Claimed</option>
+            </select>
+
+            {/* Category Dropdown */}
+            <select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setPage(1);
+              }}
+              className="px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white font-medium cursor-pointer"
+            >
+              <option value="ALL">All Categories</option>
+              <option value="ELECTRONICS">Electronics</option>
+              <option value="WALLET_CARDS">Wallet / Documents</option>
+              <option value="SUNGLASSES_OPTICAL">Eyewear</option>
+              <option value="CLOTHING">Clothing / Bag</option>
+              <option value="KEYS">Keys</option>
+              <option value="OTHER">Other</option>
+            </select>
+
+            {(searchQuery || statusFilter !== "ALL" || categoryFilter !== "ALL") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setStatusFilter("ALL");
+                  setCategoryFilter("ALL");
+                  setPage(1);
+                }}
+                className="px-2 py-1 text-xs text-amber-400 hover:text-amber-300 font-semibold underline cursor-pointer"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Items Grid */}
       {loadingLost ? (
         <div className="py-24 text-center text-xs text-neutral-400 space-y-2">
@@ -274,6 +382,24 @@ export default function ManagerLostFoundPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {!loadingLost && pagination.totalItems > 0 && (
+        <div className="pt-2">
+          <Pagination
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            limit={limit}
+            onPageChange={(newPage) => setPage(newPage)}
+            onLimitChange={(newLimit) => {
+              setLimit(newLimit);
+              setPage(1);
+            }}
+            pageSizeOptions={[6, 12, 24, 48]}
+          />
         </div>
       )}
 

@@ -29,16 +29,38 @@ import {
   SlidersHorizontal,
   KeyRound,
   FileText,
+  Edit3,
 } from "lucide-react";
+import Pagination from "@/components/Pagination";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState([]);
   const [hubs, setHubs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [togglingUserId, setTogglingUserId] = useState(null);
+
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    totalItems: 0,
+    totalPages: 1,
+    currentPage: 1,
+    limit: 10,
+  });
+
+  // Debounce search input (800ms delay)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 800);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
   // Onboard Staff Modal State
   const [showOnboardModal, setShowOnboardModal] = useState(false);
@@ -69,17 +91,51 @@ export default function AdminUsersPage() {
   const [roleError, setRoleError] = useState("");
   const [roleSuccess, setRoleSuccess] = useState("");
 
-  // Fetch users and hubs
+  // Edit User / Manager Profile Modal State
+  const [editUser, setEditUser] = useState(null);
+  const [editUserForm, setEditUserForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    role: "CUSTOMER",
+    hubId: "",
+    kyc_status: "VERIFIED",
+    is_active: true,
+    password: "",
+  });
+  const [updatingUser, setUpdatingUser] = useState(false);
+  const [editUserError, setEditUserError] = useState("");
+  const [editUserSuccess, setEditUserSuccess] = useState("");
+
+  // Fetch users and hubs with backend searching, filtering, and pagination
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      const params = {
+        page,
+        limit,
+        search: debouncedSearch.trim() || undefined,
+        role: roleFilter !== "ALL" ? roleFilter : undefined,
+        is_active: statusFilter === "ACTIVE" ? true : statusFilter === "SUSPENDED" ? false : undefined,
+      };
+
       const [usersRes, hubsRes] = await Promise.all([
-        api.get("/admin/users"),
+        api.get("/admin/users", { params }),
         api.get("/hubs"),
       ]);
 
       if (usersRes.data?.success) {
         setUsers(usersRes.data.data || []);
+        if (usersRes.data.pagination) {
+          setPagination(usersRes.data.pagination);
+        } else {
+          setPagination({
+            totalItems: usersRes.data.data?.length || 0,
+            totalPages: 1,
+            currentPage: 1,
+            limit,
+          });
+        }
       }
       if (hubsRes.data?.success) {
         setHubs(hubsRes.data.data || []);
@@ -89,7 +145,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, limit, debouncedSearch, roleFilter, statusFilter]);
 
   useEffect(() => {
     fetchData();
@@ -228,29 +284,66 @@ export default function AdminUsersPage() {
     }
   };
 
-  // Filtered Users List
-  const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
-      // Role Filter
-      if (roleFilter !== "ALL" && u.role !== roleFilter) return false;
+  // Open Edit User Modal
+  const handleOpenEditUser = (u) => {
+    setEditUser(u);
+    setEditUserForm({
+      name: u.name || "",
+      email: u.email || "",
+      phone: u.phone || "",
+      role: u.role || "CUSTOMER",
+      hubId: u.ManagedHub?.hubId || "",
+      kyc_status: u.kyc_status || "PENDING",
+      is_active: u.is_active !== false,
+      password: "",
+    });
+    setEditUserError("");
+    setEditUserSuccess("");
+  };
 
-      // Status Filter
-      if (statusFilter === "ACTIVE" && u.is_active === false) return false;
-      if (statusFilter === "SUSPENDED" && u.is_active !== false) return false;
+  // Save Edit User
+  const handleSaveEditUser = async (e) => {
+    e.preventDefault();
+    if (!editUser) return;
+    setUpdatingUser(true);
+    setEditUserError("");
+    setEditUserSuccess("");
 
-      // Text Search
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchName = u.name?.toLowerCase().includes(q);
-        const matchEmail = u.email?.toLowerCase().includes(q);
-        const matchPhone = u.phone?.includes(q);
-        const matchHub = u.ManagedHub?.name?.toLowerCase().includes(q);
-        if (!matchName && !matchEmail && !matchPhone && !matchHub) return false;
+    try {
+      const payload = {
+        name: editUserForm.name.trim(),
+        email: editUserForm.email.trim().toLowerCase(),
+        phone: editUserForm.phone ? editUserForm.phone.trim() : null,
+        role: editUserForm.role,
+        hubId: editUserForm.role === "HUB_ADMIN" ? editUserForm.hubId || null : null,
+        kyc_status: editUserForm.kyc_status,
+        is_active: editUserForm.is_active,
+      };
+      if (editUserForm.password && editUserForm.password.trim()) {
+        payload.password = editUserForm.password.trim();
       }
 
-      return true;
-    });
-  }, [users, roleFilter, statusFilter, searchQuery]);
+      const res = await api.put(`/admin/users/${editUser.userId}`, payload);
+      if (res.data?.success) {
+        setEditUserSuccess("User profile updated successfully!");
+        setTimeout(() => {
+          setEditUser(null);
+          setEditUserSuccess("");
+          fetchData();
+          if (selectedUserAudit && selectedUserAudit.userId === editUser.userId) {
+            handleOpenAudit(editUser);
+          }
+        }, 1200);
+      }
+    } catch (err) {
+      setEditUserError(err.response?.data?.message || "Failed to update user profile.");
+    } finally {
+      setUpdatingUser(false);
+    }
+  };
+
+  // In-memory fallback if needed (users already filtered by backend)
+  const filteredUsers = users;
 
   // Executive KPI Aggregations
   const stats = useMemo(() => {
@@ -365,11 +458,10 @@ export default function AdminUsersPage() {
                 key={tab.id}
                 type="button"
                 onClick={() => setRoleFilter(tab.id)}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                  roleFilter === tab.id
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${roleFilter === tab.id
                     ? "bg-purple-600 text-white font-bold shadow-sm"
                     : "text-neutral-400 hover:text-white"
-                }`}
+                  }`}
               >
                 {tab.label}
               </button>
@@ -458,13 +550,12 @@ export default function AdminUsersPage() {
                     <td className="p-4 whitespace-nowrap">
                       <div className="space-y-1">
                         <span
-                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            u.role === "SUPERADMIN"
+                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${u.role === "SUPERADMIN"
                               ? "bg-purple-950 text-purple-300 border border-purple-800"
                               : u.role === "HUB_ADMIN"
-                              ? "bg-blue-950 text-blue-300 border border-blue-800"
-                              : "bg-neutral-800 text-neutral-300 border border-neutral-700"
-                          }`}
+                                ? "bg-blue-950 text-blue-300 border border-blue-800"
+                                : "bg-neutral-800 text-neutral-300 border border-neutral-700"
+                            }`}
                         >
                           {u.role === "HUB_ADMIN" ? "HUB MANAGER" : u.role}
                         </span>
@@ -487,13 +578,12 @@ export default function AdminUsersPage() {
                     {/* KYC Status */}
                     <td className="p-4 whitespace-nowrap">
                       <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          u.kyc_status === "VERIFIED"
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${u.kyc_status === "VERIFIED"
                             ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800"
                             : u.kyc_status === "PENDING"
-                            ? "bg-amber-950/60 text-amber-400 border border-amber-800"
-                            : "bg-red-950/60 text-red-400 border border-red-800"
-                        }`}
+                              ? "bg-amber-950/60 text-amber-400 border border-amber-800"
+                              : "bg-red-950/60 text-red-400 border border-red-800"
+                          }`}
                       >
                         {u.kyc_status === "VERIFIED" ? (
                           <CheckCircle2 className="w-3 h-3" />
@@ -509,14 +599,12 @@ export default function AdminUsersPage() {
                     {/* Account Status */}
                     <td className="p-4 whitespace-nowrap">
                       <span
-                        className={`flex items-center gap-1.5 text-[11px] font-semibold ${
-                          u.is_active !== false ? "text-emerald-400" : "text-red-400"
-                        }`}
+                        className={`flex items-center gap-1.5 text-[11px] font-semibold ${u.is_active !== false ? "text-emerald-400" : "text-red-400"
+                          }`}
                       >
                         <span
-                          className={`w-2 h-2 rounded-full ${
-                            u.is_active !== false ? "bg-emerald-400 shadow-sm shadow-emerald-400/40" : "bg-red-400"
-                          }`}
+                          className={`w-2 h-2 rounded-full ${u.is_active !== false ? "bg-emerald-400 shadow-sm shadow-emerald-400/40" : "bg-red-400"
+                            }`}
                         />
                         <span>{u.is_active !== false ? "Active" : "Suspended"}</span>
                       </span>
@@ -543,16 +631,24 @@ export default function AdminUsersPage() {
                           <SlidersHorizontal className="w-3.5 h-3.5" />
                         </button>
 
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditUser(u)}
+                          className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-purple-400 hover:text-white transition-colors cursor-pointer"
+                          title="Edit User Profile & Hub Manager Info"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+
                         {u.role !== "SUPERADMIN" && (
                           <button
                             type="button"
                             disabled={togglingUserId === u.userId}
                             onClick={() => handleToggleStatus(u)}
-                            className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                              u.is_active !== false
+                            className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${u.is_active !== false
                                 ? "bg-red-950/40 hover:bg-red-900/60 text-red-400 border border-red-800/60"
                                 : "bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-800/60"
-                            }`}
+                              }`}
                           >
                             {togglingUserId === u.userId ? (
                               <Loader2 className="w-3 h-3 animate-spin mx-auto" />
@@ -569,6 +665,22 @@ export default function AdminUsersPage() {
                 ))}
               </tbody>
             </table>
+
+            {/* Pagination Toolbar */}
+            <div className="border-t border-neutral-800 px-4 bg-neutral-900/40">
+              <Pagination
+                currentPage={pagination.currentPage}
+                totalPages={pagination.totalPages}
+                totalItems={pagination.totalItems}
+                limit={pagination.limit}
+                onPageChange={(p) => setPage(p)}
+                onLimitChange={(newLimit) => {
+                  setLimit(newLimit);
+                  setPage(1);
+                }}
+                pageSizeOptions={[10, 20, 50, 100]}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -798,6 +910,179 @@ export default function AdminUsersPage() {
         </div>
       )}
 
+      {/* FULL EDIT USER & HUB MANAGER MODAL */}
+      {editUser && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="max-w-lg w-full rounded-3xl bg-neutral-900 border border-neutral-800 p-6 space-y-4 shadow-2xl my-8">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Edit3 className="w-4 h-4 text-purple-400" />
+                  Edit User & Manager Details
+                </h3>
+                <p className="text-[11px] text-neutral-400">
+                  Update credentials, station hub assignments, KYC, and security access.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditUser(null)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditUser} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-neutral-300 font-semibold">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editUserForm.name}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, name: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-neutral-300 font-semibold">Phone Number</label>
+                  <input
+                    type="tel"
+                    value={editUserForm.phone}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, phone: e.target.value })}
+                    placeholder="+91 9876543210"
+                    className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-neutral-300 font-semibold">Email Address *</label>
+                <input
+                  type="email"
+                  required
+                  value={editUserForm.email}
+                  onChange={(e) => setEditUserForm({ ...editUserForm, email: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-neutral-300 font-semibold">System Role *</label>
+                  <select
+                    value={editUserForm.role}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, role: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white focus:outline-none focus:border-purple-500 cursor-pointer"
+                  >
+                    <option value="CUSTOMER">CUSTOMER (Standard User)</option>
+                    <option value="HUB_ADMIN">HUB_ADMIN (Hub Manager)</option>
+                    <option value="SUPERADMIN">SUPERADMIN (Global Administrator)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-neutral-300 font-semibold">KYC Status</label>
+                  <select
+                    value={editUserForm.kyc_status}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, kyc_status: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white focus:outline-none focus:border-purple-500 cursor-pointer"
+                  >
+                    <option value="VERIFIED">VERIFIED (Approved)</option>
+                    <option value="PENDING">PENDING (Under Review)</option>
+                    <option value="REJECTED">REJECTED (Denied)</option>
+                    <option value="UNVERIFIED">UNVERIFIED (No Documents)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Station Hub Assignment (Shown for Hub Managers) */}
+              {editUserForm.role === "HUB_ADMIN" && (
+                <div className="space-y-1">
+                  <label className="text-neutral-300 font-semibold">Assigned Station Hub</label>
+                  <select
+                    value={editUserForm.hubId}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, hubId: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white focus:outline-none focus:border-purple-500 cursor-pointer"
+                  >
+                    <option value="">-- No Station Assigned (Vacant) --</option>
+                    {hubs.map((h) => {
+                      const isCurrentMgr = h.manager_id === editUser.userId;
+                      return (
+                        <option key={h.hubId} value={h.hubId}>
+                          {h.name} ({h.city}) {isCurrentMgr ? "[Currently Assigned Here]" : h.Manager ? `[Assigned to ${h.Manager.name}]` : "[Vacant]"}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-neutral-300 font-semibold">Account Status</label>
+                  <select
+                    value={editUserForm.is_active ? "active" : "suspended"}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, is_active: e.target.value === "active" })}
+                    className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white focus:outline-none focus:border-purple-500 cursor-pointer"
+                  >
+                    <option value="active">Active (Full Access)</option>
+                    <option value="suspended">Suspended (Access Blocked)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-neutral-300 font-semibold">
+                    Reset Password <span className="text-neutral-500 font-normal">(Optional)</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={editUserForm.password}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, password: e.target.value })}
+                    placeholder="Leave blank to keep password"
+                    className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              {editUserSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800 text-xs text-emerald-400 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{editUserSuccess}</span>
+                </div>
+              )}
+
+              {editUserError && (
+                <div className="p-3 rounded-xl bg-red-950/40 border border-red-800 text-xs text-red-400 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{editUserError}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setEditUser(null)}
+                  className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingUser}
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/20 cursor-pointer flex items-center gap-2"
+                >
+                  {updatingUser && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{updatingUser ? "Saving Changes..." : "Save Profile Changes"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* USER AUDIT DRAWER / MODAL */}
       {selectedUserAudit && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
@@ -811,13 +1096,12 @@ export default function AdminUsersPage() {
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     {selectedUserAudit.name}
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        selectedUserAudit.role === "SUPERADMIN"
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${selectedUserAudit.role === "SUPERADMIN"
                           ? "bg-purple-950 text-purple-300 border border-purple-800"
                           : selectedUserAudit.role === "HUB_ADMIN"
-                          ? "bg-blue-950 text-blue-300 border border-blue-800"
-                          : "bg-neutral-800 text-neutral-300"
-                      }`}
+                            ? "bg-blue-950 text-blue-300 border border-blue-800"
+                            : "bg-neutral-800 text-neutral-300"
+                        }`}
                     >
                       {selectedUserAudit.role}
                     </span>
@@ -947,28 +1231,38 @@ export default function AdminUsersPage() {
                 </div>
 
                 {/* Quick Governance Buttons */}
-                <div className="flex items-center justify-between pt-3 border-t border-neutral-800">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedUserAudit(null);
-                      handleOpenRoleModal(selectedUserAudit);
-                    }}
-                    className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-semibold cursor-pointer flex items-center gap-1.5"
-                  >
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Change Role / Station</span>
-                  </button>
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-neutral-800">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditUser(selectedUserAudit)}
+                      className="px-3 py-2 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/60 text-purple-300 text-xs font-semibold cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Edit Full Profile</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedUserAudit(null);
+                        handleOpenRoleModal(selectedUserAudit);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-semibold cursor-pointer flex items-center gap-1.5"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Change Role / Station</span>
+                    </button>
+                  </div>
 
                   {selectedUserAudit.role !== "SUPERADMIN" && (
                     <button
                       type="button"
                       onClick={() => handleToggleStatus(selectedUserAudit)}
-                      className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        selectedUserAudit.is_active !== false
+                      className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedUserAudit.is_active !== false
                           ? "bg-red-950/40 hover:bg-red-900/60 text-red-400 border border-red-800/60"
                           : "bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-800/60"
-                      }`}
+                        }`}
                     >
                       {selectedUserAudit.is_active !== false ? "Suspend Account" : "Reactivate Account"}
                     </button>

@@ -36,6 +36,36 @@ app.use("/api/admin/users", adminUserRoutes);
 app.use("/api/hub-admin", hubAdminRoutes);
 app.use("/api/manager", hubAdminRoutes);
 
+// Global Error Handler Middleware
+app.use((err, req, res, next) => {
+  if (err.name === "MulterError") {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "File exceeds 2MB limit. Supported formats: JPG, JPEG, PNG, WEBP (Max 2MB per photo).",
+      });
+    }
+    if (err.code === "LIMIT_FILE_COUNT") {
+      return res.status(400).json({
+        success: false,
+        message: "Upload limit exceeded. Maximum 5 photos allowed per upload batch.",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+  if (err) {
+    const status = err.status || err.statusCode || 400;
+    return res.status(status).json({
+      success: false,
+      message: err.message || "Failed to upload vehicle photos. Only JPG, JPEG, PNG, and WEBP formats are supported.",
+    });
+  }
+  next();
+});
+
 // Database connection & Server start
 const startServer = async () => {
   try {

@@ -35,7 +35,7 @@ router.post("/verify-forget", verifyForget);
 router.post("/reset", reset);
 router.get("/me", protect, getMe);
 router.post("/setup-password", protect, setupPermanentPassword);
-router.post("/kyc", protect, upload.array("documents", 2), submitKyc);
+router.post("/kyc", protect, authorize("CUSTOMER"), upload.array("documents", 2), submitKyc);
 router.post(
   "/register-manager",
   protect,

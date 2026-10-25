@@ -65,9 +65,11 @@ const loginUser = async ({ email, password }) => {
       token, 
       user: {
         id: userExist.userId,
+        userId: userExist.userId,
         name: userExist.name,
         email: userExist.email,
         role: userExist.role,
+        requires_password_change: userExist.requires_password_change,
       },
     };
   }
@@ -77,9 +79,11 @@ const loginUser = async ({ email, password }) => {
     token,
     user: {
       id: userExist.userId,
+      userId: userExist.userId,
       name: userExist.name,
       email: userExist.email,
       role: userExist.role,
+      requires_password_change: userExist.requires_password_change,
     },
   };
 };
@@ -111,6 +115,7 @@ const googleLogin = async ({ name, email, photo, uid }) => {
     token,
     user: {
       id: user.userId,
+      userId: user.userId,
       name: user.name,
       email: user.email,
       role: user.role,
@@ -586,6 +591,13 @@ const setupPermanentPassword = async (userId, newPassword) => {
 };
 
 const uploadKycDocument = async (userId, files) => {
+  const user = await userRepository.findUserById(userId);
+  if (!user || user.role !== "CUSTOMER") {
+    const error = new Error("Administrative and station staff accounts cannot submit consumer KYC documents.");
+    error.statusCode = 403;
+    throw error;
+  }
+
   if (!files || files.length === 0) {
     const error = new Error("Please upload at least one valid document image (JPG, PNG, WEBP).");
     error.statusCode = 400;

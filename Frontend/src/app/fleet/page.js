@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/api";
+import Pagination from "@/components/Pagination";
 import {
   Car,
   Calendar,
@@ -316,6 +317,28 @@ function FleetContent() {
     sortBy,
     searchQuery,
   ]);
+
+  // Pagination for catalog
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(12);
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    selectedCategory,
+    selectedFuel,
+    selectedTransmission,
+    sortBy,
+    searchQuery,
+    pickupHubId,
+  ]);
+
+  const totalItems = filteredVehicles.length;
+  const totalPages = Math.ceil(totalItems / limit) || 1;
+  const paginatedVehicles = useMemo(() => {
+    const start = (page - 1) * limit;
+    return filteredVehicles.slice(start, start + limit);
+  }, [filteredVehicles, page, limit]);
 
   return (
     <div className="relative min-h-screen bg-neutral-950 text-white font-sans pb-24">
@@ -667,7 +690,7 @@ function FleetContent() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pt-2">
-            {filteredVehicles.map((car) => {
+            {paginatedVehicles.map((car) => {
               const carId = car.vehicleId || car.id;
               const carImage =
                 (car.gallery_urls && car.gallery_urls[0]) ||
@@ -804,6 +827,26 @@ function FleetContent() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {!loadingVehicles && totalItems > 0 && (
+          <div className="mt-8">
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              limit={limit}
+              onPageChange={(newPage) => {
+                setPage(newPage);
+                window.scrollTo({ top: 380, behavior: "smooth" });
+              }}
+              onLimitChange={(newLimit) => {
+                setLimit(newLimit);
+                setPage(1);
+              }}
+              pageSizeOptions={[6, 12, 24, 48]}
+            />
           </div>
         )}
       </main>

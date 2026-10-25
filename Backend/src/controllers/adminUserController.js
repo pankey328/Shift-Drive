@@ -2,11 +2,26 @@ const adminUserService = require("../services/adminUserService");
 
 const fetchPendingKyc = async (req, res) => {
   try {
-    const pendingUsers = await adminUserService.getPendingKycList();
+    const { page, limit, search, q } = req.query;
+    const filters = {
+      kyc_status: "PENDING",
+      search: (search || q || "").trim(),
+      page: parseInt(page, 10) || 1,
+      limit: parseInt(limit, 10) || 20,
+      sortBy: "createdAt",
+      order: "ASC",
+    };
+    const result = await adminUserService.listUsers(filters);
     return res.status(200).json({
       success: true,
-      total_pending: pendingUsers.length,
-      data: pendingUsers,
+      total_pending: result.totalItems,
+      data: result.users,
+      pagination: {
+        totalItems: result.totalItems,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        limit: result.limit,
+      },
     });
   } catch (error) {
     const statusCode = error.statusCode || 500;
@@ -57,17 +72,28 @@ const handleToggleAccount = async (req, res) => {
 
 const fetchUsers = async (req, res) => {
   try {
-    const { role, is_active, kyc_status } = req.query;
+    const { role, is_active, kyc_status, search, q, sortBy, order, page, limit } = req.query;
     const filters = {};
-    if (role) filters.role = role.toUpperCase();
-    if (is_active !== undefined) filters.is_active = is_active === "true";
-    if (kyc_status) filters.kyc_status = kyc_status.toUpperCase();
+    if (role && role !== "ALL") filters.role = role.toUpperCase();
+    if (is_active !== undefined && is_active !== "ALL") filters.is_active = is_active === "true";
+    if (kyc_status && kyc_status !== "ALL") filters.kyc_status = kyc_status.toUpperCase();
+    if (search || q) filters.search = (search || q).trim();
+    if (sortBy) filters.sortBy = sortBy;
+    if (order) filters.order = order;
+    if (page) filters.page = parseInt(page, 10);
+    if (limit) filters.limit = parseInt(limit, 10);
 
-    const users = await adminUserService.listUsers(filters);
+    const result = await adminUserService.listUsers(filters);
     return res.status(200).json({
       success: true,
-      total_users: users.length,
-      data: users,
+      total_users: result.totalItems,
+      data: result.users,
+      pagination: {
+        totalItems: result.totalItems,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        limit: result.limit,
+      },
     });
   } catch (error) {
     const statusCode = error.statusCode || 500;
@@ -134,6 +160,21 @@ const handleGetUserDetails = async (req, res) => {
   }
 };
 
+const handleUpdateUserProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const updatedUser = await adminUserService.updateUserProfile(userId, req.body);
+    return res.status(200).json({
+      success: true,
+      message: "User profile updated successfully.",
+      data: updatedUser,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   fetchPendingKyc,
   handleReviewKyc,
@@ -142,4 +183,5 @@ module.exports = {
   handleOnboardStaff,
   handleUpdateUserRole,
   handleGetUserDetails,
+  handleUpdateUserProfile,
 };

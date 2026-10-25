@@ -53,8 +53,28 @@ const chargePenalty = async (req, res) => {
 const getHistory = async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
-        const history = await walletService.getHistory(userId);
-        return res.status(200).json({ success: true, data: history });
+        const { type, page, limit } = req.query;
+        const result = await walletService.getHistory(userId, {
+            type,
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
+
+        if (Array.isArray(result)) {
+            return res.status(200).json({ success: true, count: result.length, data: result });
+        }
+
+        return res.status(200).json({
+            success: true,
+            count: result.totalItems,
+            data: result.transactions,
+            pagination: {
+                totalItems: result.totalItems,
+                totalPages: result.totalPages,
+                currentPage: result.currentPage,
+                limit: result.limit,
+            },
+        });
     } catch (error) {
         const statusCode = error.statusCode || 500;
         return res.status(statusCode).json({ message: error.message });

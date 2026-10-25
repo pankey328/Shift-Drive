@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import api from "@/api";
 import Link from "next/link";
+import Pagination from "@/components/Pagination";
 import {
   Car,
   Search,
@@ -38,9 +39,36 @@ export default function SuperadminFleetPage() {
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedHubFilter, setSelectedHubFilter] = useState("ALL");
   const [selectedClassFilter, setSelectedClassFilter] = useState("ALL");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("ALL");
+
+  // Pagination & KPI Summary
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    totalItems: 0,
+    totalPages: 1,
+    currentPage: 1,
+    limit: 10,
+  });
+  const [fleetSummary, setFleetSummary] = useState({
+    total: 0,
+    ready: 0,
+    in_use: 0,
+    maintenance: 0,
+    retired: 0,
+  });
+
+  // Debounce search input (800ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Add Vehicle Modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -90,6 +118,7 @@ export default function SuperadminFleetPage() {
   const [editForm, setEditForm] = useState({
     make: "",
     model: "",
+    plate_number: "",
     base_daily_rate: "",
     vehicle_class: "SUV",
     seats: 5,
@@ -104,13 +133,28 @@ export default function SuperadminFleetPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      const params = {
+        status: selectedStatusFilter,
+        hubId: selectedHubFilter,
+        category: selectedClassFilter,
+        search: debouncedSearch.trim() || undefined,
+        page,
+        limit,
+      };
+
       const [fleetRes, hubsRes] = await Promise.all([
-        api.get("/vehicles", { params: { status: "ALL" } }),
+        api.get("/vehicles", { params }),
         api.get("/hubs"),
       ]);
 
       if (fleetRes.data?.success) {
         setVehicles(fleetRes.data.data || []);
+        if (fleetRes.data.pagination) {
+          setPagination(fleetRes.data.pagination);
+        }
+        if (fleetRes.data.summary) {
+          setFleetSummary(fleetRes.data.summary);
+        }
       }
       if (hubsRes.data?.success) {
         const loadedHubs = hubsRes.data.data || [];
@@ -124,7 +168,7 @@ export default function SuperadminFleetPage() {
     } finally {
       setLoading(false);
     }
-  }, [addForm.current_hub_id]);
+  }, [selectedStatusFilter, selectedHubFilter, selectedClassFilter, debouncedSearch, page, limit, addForm.current_hub_id]);
 
   useEffect(() => {
     fetchData();
@@ -200,6 +244,24 @@ export default function SuperadminFleetPage() {
     e.preventDefault();
     if (!galleryVehicle || newGalleryFiles.length === 0) return;
 
+    // Validate file formats client-side
+    const ALLOWED_MIMES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    const invalidFormat = newGalleryFiles.find((f) => !ALLOWED_MIMES.includes(f.type));
+    if (invalidFormat) {
+      setGalleryError(
+        `Invalid file format for "${invalidFormat.name}". Supported formats: JPG, JPEG, PNG, and WEBP (Max 2MB per photo).`
+      );
+      return;
+    }
+
+    const oversized = newGalleryFiles.find((f) => f.size > 2 * 1024 * 1024);
+    if (oversized) {
+      setGalleryError(
+        `File "${oversized.name}" exceeds 2MB limit. Supported formats: JPG, JPEG, PNG, and WEBP (Max 2MB per photo).`
+      );
+      return;
+    }
+
     setUploadingGallery(true);
     setGalleryError("");
     setGallerySuccess("");
@@ -222,7 +284,10 @@ export default function SuperadminFleetPage() {
         );
       }
     } catch (err) {
-      setGalleryError(err.response?.data?.message || "Failed to upload vehicle photos.");
+      const serverMsg = err.response?.data?.message;
+      setGalleryError(
+        serverMsg || "Failed to upload vehicle photos. Supported formats: JPG, JPEG, PNG, and WEBP (Max 2MB per photo)."
+      );
     } finally {
       setUploadingGallery(false);
     }
@@ -327,6 +392,7 @@ export default function SuperadminFleetPage() {
       const payload = {
         make: editForm.make.trim(),
         model: editForm.model.trim(),
+        plate_number: editForm.plate_number.trim().toUpperCase(),
         base_daily_rate: parseFloat(editForm.base_daily_rate),
         vehicle_class: editForm.vehicle_class,
         seats: parseInt(editForm.seats, 10),
@@ -350,30 +416,15 @@ export default function SuperadminFleetPage() {
     }
   };
 
-  // Filtered list
-  const filteredVehicles = vehicles.filter((v) => {
-    const matchesHub = selectedHubFilter === "ALL" || v.current_hub_id === selectedHubFilter;
-    const matchesClass = selectedClassFilter === "ALL" || v.vehicle_class === selectedClassFilter;
-    const matchesStatus = selectedStatusFilter === "ALL" || v.status === selectedStatusFilter;
-
-    const query = searchQuery.toLowerCase().trim();
-    const matchesSearch =
-      !query ||
-      v.plate_number?.toLowerCase().includes(query) ||
-      v.model?.toLowerCase().includes(query) ||
-      v.make?.toLowerCase().includes(query) ||
-      v.CurrentHub?.name?.toLowerCase().includes(query) ||
-      v.CurrentHub?.city?.toLowerCase().includes(query);
-
-    return matchesHub && matchesClass && matchesStatus && matchesSearch;
-  });
+  // Filtered list (backed by server-side search, filtering, and pagination)
+  const filteredVehicles = vehicles;
 
   // KPI calculations
-  const totalFleetCount = vehicles.length;
-  const readyCount = vehicles.filter((v) => v.status === "ACTIVE").length;
-  const onTripCount = vehicles.filter((v) => v.status === "IN_USE").length;
-  const maintenanceCount = vehicles.filter((v) => v.status === "MAINTENANCE").length;
-  const retiredCount = vehicles.filter((v) => v.status === "RETIRED").length;
+  const totalFleetCount = fleetSummary.total || pagination.totalItems || vehicles.length;
+  const readyCount = fleetSummary.ready ?? vehicles.filter((v) => v.status === "ACTIVE").length;
+  const onTripCount = fleetSummary.in_use ?? vehicles.filter((v) => v.status === "IN_USE").length;
+  const maintenanceCount = fleetSummary.maintenance ?? vehicles.filter((v) => v.status === "MAINTENANCE").length;
+  const retiredCount = fleetSummary.retired ?? vehicles.filter((v) => v.status === "RETIRED").length;
 
   return (
     <div className="space-y-6">
@@ -487,7 +538,10 @@ export default function SuperadminFleetPage() {
           <div className="relative">
             <select
               value={selectedHubFilter}
-              onChange={(e) => setSelectedHubFilter(e.target.value)}
+              onChange={(e) => {
+                setSelectedHubFilter(e.target.value);
+                setPage(1);
+              }}
               className="w-full appearance-none px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-purple-500 cursor-pointer pr-8"
             >
               <option value="ALL">All Station Hubs ({hubs.length})</option>
@@ -504,7 +558,10 @@ export default function SuperadminFleetPage() {
           <div className="relative">
             <select
               value={selectedClassFilter}
-              onChange={(e) => setSelectedClassFilter(e.target.value)}
+              onChange={(e) => {
+                setSelectedClassFilter(e.target.value);
+                setPage(1);
+              }}
               className="w-full appearance-none px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-purple-500 cursor-pointer pr-8"
             >
               <option value="ALL">All Vehicle Classes</option>
@@ -520,7 +577,10 @@ export default function SuperadminFleetPage() {
           <div className="relative">
             <select
               value={selectedStatusFilter}
-              onChange={(e) => setSelectedStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setSelectedStatusFilter(e.target.value);
+                setPage(1);
+              }}
               className="w-full appearance-none px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-neutral-200 focus:outline-none focus:border-purple-500 cursor-pointer pr-8"
             >
               <option value="ALL">All Statuses ({totalFleetCount})</option>
@@ -567,6 +627,7 @@ export default function SuperadminFleetPage() {
                   setSelectedClassFilter("ALL");
                   setSelectedStatusFilter("ALL");
                   setSearchQuery("");
+                  setPage(1);
                 }}
                 className="text-purple-400 hover:text-purple-300 font-semibold underline cursor-pointer ml-1"
               >
@@ -591,254 +652,271 @@ export default function SuperadminFleetPage() {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-3xl border border-neutral-800 bg-neutral-900 shadow-sm">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-neutral-950 text-neutral-400 font-semibold border-b border-neutral-800">
-              <tr>
-                <th className="px-5 py-3.5">Vehicle & Class</th>
-                <th className="px-4 py-3.5">License Plate</th>
-                <th className="px-4 py-3.5">Current Station Hub</th>
-                <th className="px-4 py-3.5">Rate / Specs</th>
-                <th className="px-4 py-3.5">Status</th>
-                <th className="px-4 py-3.5">Active Assignment</th>
-                <th className="px-5 py-3.5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-800">
-              {filteredVehicles.map((vehicle) => {
-                const activeBooking =
-                  vehicle.Bookings && vehicle.Bookings.length > 0
-                    ? vehicle.Bookings[0]
-                    : null;
+        <>
+          <div className="overflow-x-auto rounded-3xl border border-neutral-800 bg-neutral-900 shadow-sm">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-neutral-950 text-neutral-400 font-semibold border-b border-neutral-800">
+                <tr>
+                  <th className="px-5 py-3.5">Vehicle & Class</th>
+                  <th className="px-4 py-3.5">License Plate</th>
+                  <th className="px-4 py-3.5">Current Station Hub</th>
+                  <th className="px-4 py-3.5">Rate / Specs</th>
+                  <th className="px-4 py-3.5">Status</th>
+                  <th className="px-4 py-3.5">Active Assignment</th>
+                  <th className="px-5 py-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-800">
+                {filteredVehicles.map((vehicle) => {
+                  const activeBooking =
+                    vehicle.Bookings && vehicle.Bookings.length > 0
+                      ? vehicle.Bookings[0]
+                      : null;
 
-                return (
-                  <tr key={vehicle.vehicleId} className="hover:bg-neutral-800/30 transition-colors">
-                    {/* Make & Model */}
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-10 rounded-xl bg-neutral-950 border border-neutral-800 overflow-hidden flex items-center justify-center text-neutral-400 font-bold flex-shrink-0">
-                          {vehicle.gallery_urls && vehicle.gallery_urls.length > 0 ? (
-                            <img
-                              src={vehicle.gallery_urls[0]}
-                              alt={`${vehicle.make} ${vehicle.model}`}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <Car className="w-5 h-5 text-purple-400" />
-                          )}
-                        </div>
-                        <div>
-                          <div className="font-bold text-white text-sm">
-                            {vehicle.make} {vehicle.model}
+                  return (
+                    <tr key={vehicle.vehicleId} className="hover:bg-neutral-800/30 transition-colors">
+                      {/* Make & Model */}
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-10 rounded-xl bg-neutral-950 border border-neutral-800 overflow-hidden flex items-center justify-center text-neutral-400 font-bold flex-shrink-0">
+                            {vehicle.gallery_urls && vehicle.gallery_urls.length > 0 ? (
+                              <img
+                                src={vehicle.gallery_urls[0]}
+                                alt={`${vehicle.make} ${vehicle.model}`}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <Car className="w-5 h-5 text-purple-400" />
+                            )}
                           </div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-300 border border-neutral-700">
-                              {vehicle.vehicle_class || "SEDAN"}
-                            </span>
-                            <span className="text-[10px] text-neutral-500">
-                              {vehicle.seats} Seats &bull; {vehicle.fuel_type || "Petrol"}
-                            </span>
+                          <div>
+                            <div className="font-bold text-white text-sm">
+                              {vehicle.make} {vehicle.model}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-300 border border-neutral-700">
+                                {vehicle.vehicle_class || "SEDAN"}
+                              </span>
+                              <span className="text-[10px] text-neutral-500">
+                                {vehicle.seats} Seats &bull; {vehicle.fuel_type || "Petrol"}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Plate */}
-                    <td className="px-4 py-4">
-                      <span className="font-mono font-bold text-white px-2.5 py-1 rounded-lg bg-neutral-950 border border-neutral-800 text-xs">
-                        {vehicle.plate_number}
-                      </span>
-                    </td>
-
-                    {/* Station Hub */}
-                    <td className="px-4 py-4">
-                      <div className="flex items-start gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-purple-400 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <span className="font-bold text-white block">
-                            {vehicle.CurrentHub?.name || "Unassigned Station"}
-                          </span>
-                          <span className="text-[10px] text-neutral-400 block">
-                            {vehicle.CurrentHub?.city || "Unknown City"}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Pricing & Transmission */}
-                    <td className="px-4 py-4">
-                      <div className="font-bold text-white text-sm">
-                        ₹{Number(vehicle.base_daily_rate || 0).toLocaleString("en-IN")}
-                        <span className="text-[10px] text-neutral-500 font-normal"> /day</span>
-                      </div>
-                      <span className="text-[10px] text-neutral-400 block mt-0.5">
-                        {vehicle.transmission || "Automatic"}
-                      </span>
-                    </td>
-
-                    {/* Status Badge */}
-                    <td className="px-4 py-4">
-                      <span
-                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border inline-flex items-center gap-1.5 ${vehicle.status === "ACTIVE"
-                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                          : vehicle.status === "IN_USE"
-                            ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
-                            : vehicle.status === "MAINTENANCE"
-                              ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                              : "bg-neutral-800 border-neutral-700 text-neutral-400"
-                          }`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${vehicle.status === "ACTIVE"
-                            ? "bg-emerald-400"
-                            : vehicle.status === "IN_USE"
-                              ? "bg-blue-400 animate-pulse"
-                              : vehicle.status === "MAINTENANCE"
-                                ? "bg-amber-400"
-                                : "bg-neutral-500"
-                            }`}
-                        />
-                        <span>
-                          {vehicle.status === "ACTIVE"
-                            ? "Ready on Lot"
-                            : vehicle.status === "IN_USE"
-                              ? "On Road"
-                              : vehicle.status === "MAINTENANCE"
-                                ? "In Bay"
-                                : "Retired"}
+                      {/* Plate */}
+                      <td className="px-4 py-4">
+                        <span className="font-mono font-bold text-white px-2.5 py-1 rounded-lg bg-neutral-950 border border-neutral-800 text-xs">
+                          {vehicle.plate_number}
                         </span>
-                      </span>
-                    </td>
+                      </td>
 
-                    {/* Active Assignment / Driver */}
-                    <td className="px-4 py-4">
-                      {activeBooking ? (
-                        <div className="space-y-0.5">
-                          <span className="font-bold text-white block">
-                            {activeBooking.Customer?.name || "Customer"}
-                          </span>
-                          <span className="text-[10px] text-neutral-400 font-mono block">
-                            {activeBooking.Customer?.phone || activeBooking.Customer?.email}
-                          </span>
-                          <span className="text-[10px] text-blue-400 font-semibold block">
-                            Active Rental
-                          </span>
-                        </div>
-                      ) : vehicle.status === "MAINTENANCE" ? (
-                        <div className="text-[11px] text-amber-400 space-y-0.5">
-                          <span className="font-semibold block">
-                            {vehicle.service_category || "In Maintenance"}
-                          </span>
-                          {vehicle.mechanic_assigned && (
-                            <span className="text-[10px] text-neutral-400 block">
-                              Tech: {vehicle.mechanic_assigned}
+                      {/* Station Hub */}
+                      <td className="px-4 py-4">
+                        <div className="flex items-start gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-purple-400 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold text-white block">
+                              {vehicle.CurrentHub?.name || "Unassigned Station"}
                             </span>
-                          )}
+                            <span className="text-[10px] text-neutral-400 block">
+                              {vehicle.CurrentHub?.city || "Unknown City"}
+                            </span>
+                          </div>
                         </div>
-                      ) : (
-                        <span className="text-neutral-500 text-[11px]">Parked & Available</span>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* Action Controls */}
-                    <td className="px-5 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {/* Transfer Hub button */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTransferVehicle(vehicle);
-                            setTargetHubId("");
-                            setTransferError("");
-                            setTransferSuccess("");
-                          }}
-                          disabled={vehicle.status === "IN_USE"}
-                          className={`p-2 rounded-xl transition-all cursor-pointer ${vehicle.status === "IN_USE"
-                            ? "bg-neutral-950 text-neutral-600 cursor-not-allowed"
-                            : "bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white"
+                      {/* Pricing & Transmission */}
+                      <td className="px-4 py-4">
+                        <div className="font-bold text-white text-sm">
+                          ₹{Number(vehicle.base_daily_rate || 0).toLocaleString("en-IN")}
+                          <span className="text-[10px] text-neutral-500 font-normal"> /day</span>
+                        </div>
+                        <span className="text-[10px] text-neutral-400 block mt-0.5">
+                          {vehicle.transmission || "Automatic"}
+                        </span>
+                      </td>
+
+                      {/* Status Badge */}
+                      <td className="px-4 py-4">
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border inline-flex items-center gap-1.5 ${vehicle.status === "ACTIVE"
+                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                            : vehicle.status === "IN_USE"
+                              ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                              : vehicle.status === "MAINTENANCE"
+                                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                                : "bg-neutral-800 border-neutral-700 text-neutral-400"
                             }`}
-                          title={
-                            vehicle.status === "IN_USE"
-                              ? "Cannot transfer while vehicle is currently in an active trip"
-                              : "Transfer Vehicle to Another Station Hub"
-                          }
                         >
-                          <ArrowRightLeft className="w-3.5 h-3.5 text-purple-400" />
-                        </button>
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${vehicle.status === "ACTIVE"
+                              ? "bg-emerald-400"
+                              : vehicle.status === "IN_USE"
+                                ? "bg-blue-400 animate-pulse"
+                                : vehicle.status === "MAINTENANCE"
+                                  ? "bg-amber-400"
+                                  : "bg-neutral-500"
+                              }`}
+                          />
+                          <span>
+                            {vehicle.status === "ACTIVE"
+                              ? "Ready on Lot"
+                              : vehicle.status === "IN_USE"
+                                ? "On Road"
+                                : vehicle.status === "MAINTENANCE"
+                                  ? "In Bay"
+                                  : "Retired"}
+                          </span>
+                        </span>
+                      </td>
 
-                        {/* Status button */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStatusVehicle(vehicle);
-                            setNewStatus(vehicle.status);
-                            setServiceCategory(vehicle.service_category || "Routine Inspection");
-                            setServiceNotes(vehicle.service_notes || "");
-                            setMechanicAssigned(vehicle.mechanic_assigned || "");
-                            setEstimatedReadyDate(
-                              vehicle.estimated_ready_date
-                                ? new Date(vehicle.estimated_ready_date).toISOString().slice(0, 10)
-                                : ""
-                            );
-                            setStatusError("");
-                            setStatusSuccess("");
-                          }}
-                          className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white transition-all cursor-pointer"
-                          title="Change Status / Service Bay"
-                        >
-                          <Wrench className="w-3.5 h-3.5 text-amber-400" />
-                        </button>
+                      {/* Active Assignment / Driver */}
+                      <td className="px-4 py-4">
+                        {activeBooking ? (
+                          <div className="space-y-0.5">
+                            <span className="font-bold text-white block">
+                              {activeBooking.Customer?.name || "Customer"}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 font-mono block">
+                              {activeBooking.Customer?.phone || activeBooking.Customer?.email}
+                            </span>
+                            <span className="text-[10px] text-blue-400 font-semibold block">
+                              Active Rental
+                            </span>
+                          </div>
+                        ) : vehicle.status === "MAINTENANCE" ? (
+                          <div className="text-[11px] text-amber-400 space-y-0.5">
+                            <span className="font-semibold block">
+                              {vehicle.service_category || "In Maintenance"}
+                            </span>
+                            {vehicle.mechanic_assigned && (
+                              <span className="text-[10px] text-neutral-400 block">
+                                Tech: {vehicle.mechanic_assigned}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-neutral-500 text-[11px]">Parked & Available</span>
+                        )}
+                      </td>
 
-                        {/* Photo Gallery button */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setGalleryVehicle(vehicle);
-                            setNewGalleryFiles([]);
-                            setGalleryError("");
-                            setGallerySuccess("");
-                          }}
-                          className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white transition-all cursor-pointer"
-                          title={`Manage Vehicle Photos (${vehicle.gallery_urls?.length || 0})`}
-                        >
-                          <ImageIcon className="w-3.5 h-3.5 text-blue-400" />
-                        </button>
+                      {/* Action Controls */}
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Transfer Hub button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTransferVehicle(vehicle);
+                              setTargetHubId("");
+                              setTransferError("");
+                              setTransferSuccess("");
+                            }}
+                            disabled={vehicle.status === "IN_USE"}
+                            className={`p-2 rounded-xl transition-all cursor-pointer ${vehicle.status === "IN_USE"
+                              ? "bg-neutral-950 text-neutral-600 cursor-not-allowed"
+                              : "bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white"
+                              }`}
+                            title={
+                              vehicle.status === "IN_USE"
+                                ? "Cannot transfer while vehicle is currently in an active trip"
+                                : "Transfer Vehicle to Another Station Hub"
+                            }
+                          >
+                            <ArrowRightLeft className="w-3.5 h-3.5 text-purple-400" />
+                          </button>
 
-                        {/* Edit details button */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditVehicle(vehicle);
-                            setEditForm({
-                              make: vehicle.make,
-                              model: vehicle.model,
-                              base_daily_rate: vehicle.base_daily_rate,
-                              vehicle_class: vehicle.vehicle_class || "SUV",
-                              seats: vehicle.seats || 5,
-                              fuel_type: vehicle.fuel_type || "Petrol",
-                              transmission: vehicle.transmission || "Automatic",
-                            });
-                            setEditError("");
-                            setEditSuccess("");
-                          }}
-                          className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white transition-all cursor-pointer"
-                          title="Edit Vehicle Specs & Rate"
-                        >
-                          <Edit3 className="w-3.5 h-3.5 text-neutral-300" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                          {/* Status button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStatusVehicle(vehicle);
+                              setNewStatus(vehicle.status);
+                              setServiceCategory(vehicle.service_category || "Routine Inspection");
+                              setServiceNotes(vehicle.service_notes || "");
+                              setMechanicAssigned(vehicle.mechanic_assigned || "");
+                              setEstimatedReadyDate(
+                                vehicle.estimated_ready_date
+                                  ? new Date(vehicle.estimated_ready_date).toISOString().slice(0, 10)
+                                  : ""
+                              );
+                              setStatusError("");
+                              setStatusSuccess("");
+                            }}
+                            className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white transition-all cursor-pointer"
+                            title="Change Status / Service Bay"
+                          >
+                            <Wrench className="w-3.5 h-3.5 text-amber-400" />
+                          </button>
+
+                          {/* Photo Gallery button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGalleryVehicle(vehicle);
+                              setNewGalleryFiles([]);
+                              setGalleryError("");
+                              setGallerySuccess("");
+                            }}
+                            className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white transition-all cursor-pointer"
+                            title={`Manage Vehicle Photos (${vehicle.gallery_urls?.length || 0})`}
+                          >
+                            <ImageIcon className="w-3.5 h-3.5 text-blue-400" />
+                          </button>
+
+                          {/* Edit details button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditVehicle(vehicle);
+                              setEditForm({
+                                make: vehicle.make || "",
+                                model: vehicle.model || "",
+                                plate_number: vehicle.plate_number || "",
+                                base_daily_rate: vehicle.base_daily_rate || "",
+                                vehicle_class: vehicle.vehicle_class || "SUV",
+                                seats: vehicle.seats || 5,
+                                fuel_type: vehicle.fuel_type || "Petrol",
+                                transmission: vehicle.transmission || "Automatic",
+                              });
+                              setEditError("");
+                              setEditSuccess("");
+                            }}
+                            className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white transition-all cursor-pointer"
+                            title="Edit Vehicle Specs & Rate"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-neutral-300" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {!loading && pagination.totalItems > 0 && (
+            <div className="mt-4">
+              <Pagination
+                currentPage={pagination.currentPage}
+                totalPages={pagination.totalPages}
+                totalItems={pagination.totalItems}
+                limit={limit}
+                onPageChange={(newPage) => setPage(newPage)}
+                onLimitChange={(newLimit) => {
+                  setLimit(newLimit);
+                  setPage(1);
+                }}
+                pageSizeOptions={[10, 20, 50, 100]}
+              />
+            </div>
+          )}
+        </>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL 1: ADD VEHICLE TO ENTERPRISE FLEET                                  */}
-      {/* ========================================================================= */}
+      {/* ADD VEHICLE TO ENTERPRISE FLEET */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="max-w-xl w-full rounded-3xl bg-neutral-900 border border-neutral-800 p-6 space-y-4 shadow-2xl">
@@ -991,9 +1069,25 @@ export default function SuperadminFleetPage() {
                   <input
                     type="file"
                     multiple
-                    accept="image/*"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
                     onChange={(e) => {
                       const files = Array.from(e.target.files || []).slice(0, 5);
+                      const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+                      const invalid = files.find((f) => !allowedMimes.includes(f.type));
+                      if (invalid) {
+                        setAddError(
+                          `Invalid format for "${invalid.name}". Supported formats: JPG, JPEG, PNG, and WEBP (Max 2MB per photo).`
+                        );
+                        return;
+                      }
+                      const oversized = files.find((f) => f.size > 2 * 1024 * 1024);
+                      if (oversized) {
+                        setAddError(
+                          `File "${oversized.name}" exceeds 2MB limit. Supported formats: JPG, JPEG, PNG, and WEBP (Max 2MB per photo).`
+                        );
+                        return;
+                      }
+                      setAddError("");
                       setVehicleImages(files);
                     }}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -1005,7 +1099,9 @@ export default function SuperadminFleetPage() {
                         ? `${vehicleImages.length} image(s) selected for upload`
                         : "Click or drag vehicle photos here"}
                     </p>
-                    <p className="text-[10px] text-neutral-500">PNG, JPG, WebP up to 5MB each (Max 5 photos)</p>
+                    <p className="text-[10px] text-neutral-400">
+                      Supported formats: <span className="text-neutral-200 font-semibold">JPG, JPEG, PNG, WEBP</span> (Max 2MB each, up to 5 photos)
+                    </p>
                   </div>
                 </div>
 
@@ -1292,18 +1388,53 @@ export default function SuperadminFleetPage() {
             </div>
 
             <form onSubmit={handleEditVehicle} className="space-y-4 text-xs">
+              {/* Station Allocation Indicator */}
               <div className="p-3 rounded-2xl bg-neutral-950 border border-neutral-800 flex items-center justify-between">
-                <div>
-                  <span className="font-bold text-white block">
-                    {editVehicle.make} {editVehicle.model}
-                  </span>
-                  <span className="text-[11px] text-neutral-400">
-                    Station: {editVehicle.CurrentHub?.name || "Unassigned"}
-                  </span>
-                </div>
-                <span className="font-mono font-bold text-purple-300 px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800">
-                  {editVehicle.plate_number}
+                <span className="text-[11px] text-neutral-400">Current Station Hub:</span>
+                <span className="font-semibold text-white text-xs">
+                  {editVehicle.CurrentHub?.name || "Unassigned Station"} ({editVehicle.CurrentHub?.city || "N/A"})
                 </span>
+              </div>
+
+              {/* License Plate Number */}
+              <div className="space-y-1">
+                <label className="text-neutral-300 font-semibold">License Plate Number *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. RJ 14 AB 1234"
+                  value={editForm.plate_number}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, plate_number: e.target.value.toUpperCase() })
+                  }
+                  className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white font-mono uppercase font-bold focus:border-purple-500"
+                />
+              </div>
+
+              {/* Make & Model */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-neutral-300 font-semibold">Make (Manufacturer) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.make}
+                    onChange={(e) => setEditForm({ ...editForm, make: e.target.value })}
+                    placeholder="e.g. Hyundai"
+                    className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-neutral-300 font-semibold">Model Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.model}
+                    onChange={(e) => setEditForm({ ...editForm, model: e.target.value })}
+                    placeholder="e.g. Creta SX(O)"
+                    className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1471,9 +1602,25 @@ export default function SuperadminFleetPage() {
                   <input
                     type="file"
                     multiple
-                    accept="image/*"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
                     onChange={(e) => {
                       const files = Array.from(e.target.files || []).slice(0, 5);
+                      const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+                      const invalid = files.find((f) => !allowedMimes.includes(f.type));
+                      if (invalid) {
+                        setGalleryError(
+                          `Invalid file format for "${invalid.name}". Supported formats: JPG, JPEG, PNG, and WEBP (Max 2MB per photo).`
+                        );
+                        return;
+                      }
+                      const oversized = files.find((f) => f.size > 2 * 1024 * 1024);
+                      if (oversized) {
+                        setGalleryError(
+                          `File "${oversized.name}" exceeds 2MB limit. Supported formats: JPG, JPEG, PNG, and WEBP (Max 2MB per photo).`
+                        );
+                        return;
+                      }
+                      setGalleryError("");
                       setNewGalleryFiles(files);
                     }}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -1485,7 +1632,9 @@ export default function SuperadminFleetPage() {
                         ? `${newGalleryFiles.length} new photo(s) selected`
                         : "Click to select additional photos"}
                     </p>
-                    <p className="text-[10px] text-neutral-500">Auto-compressed and uploaded to Cloudinary</p>
+                    <p className="text-[10px] text-neutral-400">
+                      Supported formats: <span className="text-neutral-200 font-semibold">JPG, JPEG, PNG, WEBP</span> (Max 2MB per photo, up to 5 photos)
+                    </p>
                   </div>
                 </div>
               </div>

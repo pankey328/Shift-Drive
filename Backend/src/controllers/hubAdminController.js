@@ -19,7 +19,7 @@ const getLocalDashboard = async (req, res) => {
 // Fleet Rebalancing (Deadheading Transfers)
 const handleRequestTransfer = async (req, res) => {
   try {
-    const managerId = req.user.userId;
+    const managerId = req.user?.userId || req.user?.id || req.body?.initiated_by;
     const {
       source_hub_id,
       destination_hub_id,
@@ -55,7 +55,7 @@ const handleRequestTransfer = async (req, res) => {
 const handleStartTransfer = async (req, res) => {
   try {
     const { transferId } = req.params;
-    const { driver_name, driver_phone } = req.body;
+    const { driver_name, driver_phone } = req.body || {};
 
     const updated = await hubAdminService.startFleetTransfer(transferId, {
       driver_name,
@@ -107,18 +107,90 @@ const handleCancelTransfer = async (req, res) => {
 
 const handleListTransfers = async (req, res) => {
   try {
+    const { status, sourceHubId, destinationHubId, search, page, limit } = req.query;
+
+    const filters = {
+      status,
+      sourceHubId,
+      destinationHubId,
+      search,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    };
+
+    if (req.user.role === "SUPERADMIN" && (!req.query.hubId || req.query.hubId === "ALL")) {
+      const result = await hubAdminService.listAllPlatformTransfers(filters);
+
+      if (Array.isArray(result)) {
+        return res.status(200).json({
+          success: true,
+          total: result.length,
+          data: result,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        total: result.totalItems,
+        data: result.transfers,
+        pagination: {
+          totalItems: result.totalItems,
+          totalPages: result.totalPages,
+          currentPage: result.currentPage,
+          limit: result.limit,
+        },
+      });
+    }
+
     const hubId = await hubAdminService.resolveManagerHub(
       req.user,
       req.query.hubId,
     );
-    const { status } = req.query;
 
-    const transfers = await hubAdminService.listHubTransfers(hubId, { status });
+    const result = await hubAdminService.listHubTransfers(hubId, filters);
+
+    if (Array.isArray(result)) {
+      return res.status(200).json({
+        success: true,
+        total: result.length,
+        data: result,
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      total: transfers.length,
-      data: transfers,
+      total: result.totalItems,
+      data: result.transfers,
+      pagination: {
+        totalItems: result.totalItems,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        limit: result.limit,
+      },
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+// Customer Quick Lookup for Walk-In POS
+const handleCustomerLookup = async (req, res) => {
+  try {
+    const { query } = req.query;
+    if (!query) {
+      return res.status(400).json({ success: false, message: "Search query is required." });
+    }
+    const customer = await hubAdminService.lookupCustomer(query);
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "No registered customer found for this contact info.",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: customer,
     });
   } catch (error) {
     const statusCode = error.statusCode || 500;
@@ -194,18 +266,35 @@ const handleGetLostItems = async (req, res) => {
       req.user,
       req.query.hubId,
     );
-    const { status, category, vehicle_id } = req.query;
+    const { status, category, vehicle_id, search, page, limit } = req.query;
 
-    const items = await hubAdminService.fetchLostItems(hubId, {
+    const result = await hubAdminService.fetchLostItems(hubId, {
       status,
       category,
       vehicle_id,
+      search,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
     });
+
+    if (Array.isArray(result)) {
+      return res.status(200).json({
+        success: true,
+        total: result.length,
+        data: result,
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      total: items.length,
-      data: items,
+      total: result.totalItems,
+      data: result.items,
+      pagination: {
+        totalItems: result.totalItems,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        limit: result.limit,
+      },
     });
   } catch (error) {
     const statusCode = error.statusCode || 500;
@@ -306,6 +395,7 @@ module.exports = {
   handleCompleteTransfer,
   handleCancelTransfer,
   handleListTransfers,
+  handleCustomerLookup,
   handleWalkInBooking,
   handleLogLostItem,
   handleGetLostItems,

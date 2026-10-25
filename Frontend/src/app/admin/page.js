@@ -106,14 +106,6 @@ export default function SuperadminCommandCenter() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-purple-400" : ""}`} />
             <span>Refresh Analytics</span>
           </button>
-
-          <Link
-            href="/manager"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/25 transition-all cursor-pointer"
-          >
-            <span>Station Action Desk</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </Link>
         </div>
       </div>
 

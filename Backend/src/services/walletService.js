@@ -53,8 +53,8 @@ const chargePenalty = async (targetUserId, amount, reason, bookingId) => {
   });
 };
 
-const getHistory = async (userId) => {
-  return await getTransactionHistory(userId);
+const getHistory = async (userId, filters = {}) => {
+  return await getTransactionHistory(userId, filters);
 };
 
 module.exports = {

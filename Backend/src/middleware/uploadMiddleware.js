@@ -9,7 +9,7 @@ const fileFilter = (req, file, cb) => {
     cb(null, true);
   } else {
     cb(
-      new Error("Invalid file type. Only JPG, PNG, and WEBP are allowed."),
+      new Error(`Invalid file format for "${file.originalname}". Only JPG, JPEG, PNG, and WEBP image formats are supported (Max 2MB).`),
       false,
     );
   }

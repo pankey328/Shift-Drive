@@ -73,12 +73,33 @@ const getManagerInspections = async (req, res) => {
 
 const getAllInspections = async (req, res) => {
   try {
-    const { damageOnly, severity } = req.query;
-    const result = await inspectionService.fetchAllInspections({ damageOnly, severity });
+    const { damageOnly, severity, type, search, q, page, limit } = req.query;
+    const result = await inspectionService.fetchAllInspections({
+      damageOnly,
+      severity,
+      type,
+      search: (search || q || "").trim(),
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
 
     return res.status(200).json({
       success: true,
       ...result,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const handleGetInspectionComparison = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const comparison = await inspectionService.getBookingComparisonAudit(bookingId);
+    return res.status(200).json({
+      success: true,
+      data: comparison,
     });
   } catch (error) {
     const statusCode = error.statusCode || 500;
@@ -91,5 +112,6 @@ module.exports = {
   fetchInspections,
   getManagerInspections,
   getAllInspections,
+  handleGetInspectionComparison,
 };
 

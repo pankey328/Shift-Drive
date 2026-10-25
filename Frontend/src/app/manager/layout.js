@@ -54,7 +54,13 @@ function ManagerSidebarContent() {
           setHubs(allHubs);
 
           if (user?.role === "HUB_ADMIN") {
-            const assigned = allHubs.find((h) => h.manager_id === user.userId) || allHubs[0];
+            const userIdentifier = user?.userId || user?.id;
+            const userEmail = user?.email?.toLowerCase().trim();
+            const assigned = allHubs.find((h) => {
+              const idMatch = userIdentifier && (h.manager_id === userIdentifier || h.Manager?.userId === userIdentifier);
+              const emailMatch = userEmail && h.Manager?.email?.toLowerCase().trim() === userEmail;
+              return idMatch || emailMatch;
+            }) || allHubs[0];
             setCurrentHub(assigned);
             setSelectedHubId(assigned?.hubId || "");
           } else if (user?.role === "SUPERADMIN") {
@@ -134,12 +140,12 @@ function ManagerSidebarContent() {
 
       {/* Main Persistent Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 bg-neutral-900 border-r border-neutral-800 flex flex-col justify-between transition-transform duration-300 lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-neutral-900 border-r border-neutral-800 flex flex-col justify-between transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:translate-x-0 flex-shrink-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         {/* Top Header & Assigned Station Badge */}
-        <div className="p-5 border-b border-neutral-800 space-y-4">
+        <div className="p-5 border-b border-neutral-800 space-y-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <Link href="/manager" className="flex items-center gap-3 group">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 shadow-lg shadow-blue-500/25 group-hover:scale-105 transition-transform">
@@ -270,7 +276,7 @@ function ManagerSidebarContent() {
         </div>
 
         {/* Bottom Manager Profile Card & Actions */}
-        <div className="p-4 border-t border-neutral-800 bg-neutral-950/80 space-y-3">
+        <div className="p-4 border-t border-neutral-800 bg-neutral-950/80 space-y-3 flex-shrink-0">
           <div className="flex items-center gap-3 px-2">
             <div className="w-9 h-9 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center font-bold text-xs text-blue-400 uppercase">
               {user?.name ? user.name[0] : "M"}
@@ -330,13 +336,13 @@ function ManagerSidebarContent() {
 
 export default function ManagerLayout({ children }) {
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex overflow-hidden">
-      <Suspense fallback={<div className="w-72 bg-neutral-900 border-r border-neutral-800 hidden lg:block" />}>
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col lg:flex-row">
+      <Suspense fallback={<div className="w-72 bg-neutral-900 border-r border-neutral-800 hidden lg:block lg:sticky lg:top-0 lg:h-screen flex-shrink-0" />}>
         <ManagerSidebarContent />
       </Suspense>
 
       {/* Main Workspace */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto pt-16 lg:pt-0">
+      <div className="flex-1 flex flex-col min-w-0 pt-16 lg:pt-0">
         <main className="flex-1 bg-black">
           {children}
         </main>

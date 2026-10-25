@@ -1,4 +1,5 @@
 const { Hub, User } = require("../models");
+const { Op } = require("sequelize");
 
 const createHub = async (hubData) => {
   return await Hub.create(hubData);
@@ -50,6 +51,16 @@ const assignManagerToHub = async (hubId, managerId) => {
     error.statusCode = 404;
     throw error;
   }
+
+  if (managerId) {
+    // Crucial: A manager can only govern ONE hub at a time.
+    // Automatically unlink this manager from any other hub they were previously managing:
+    await Hub.update(
+      { manager_id: null },
+      { where: { manager_id: managerId, hubId: { [Op.ne]: hubId } } }
+    );
+  }
+
   hub.manager_id = managerId;
   await hub.save();
   return hub;

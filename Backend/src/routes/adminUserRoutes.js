@@ -9,6 +9,7 @@ const {
   handleOnboardStaff,
   handleUpdateUserRole,
   handleGetUserDetails,
+  handleUpdateUserProfile,
 } = require("../controllers/adminUserController");
 
 router.use(protect);
@@ -30,6 +31,10 @@ router.patch("/:userId/role", authorize("SUPERADMIN"), handleUpdateUserRole);
 
 // Get complete audit profile for user
 router.get("/:userId/details", authorize("SUPERADMIN"), handleGetUserDetails);
+
+// Full profile update for user / hub manager
+router.put("/:userId", authorize("SUPERADMIN"), handleUpdateUserProfile);
+router.patch("/:userId", authorize("SUPERADMIN"), handleUpdateUserProfile);
 
 // List all users with filtering
 router.get("/", authorize("SUPERADMIN"), fetchUsers);

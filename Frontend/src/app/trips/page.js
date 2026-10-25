@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/api";
@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useDispatch } from "react-redux";
 import { updateUser } from "@/redux/slices/authSlice";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import Pagination from "@/components/Pagination";
 import {
   Car,
   Calendar,
@@ -45,6 +46,16 @@ function TripsDashboardContent() {
   const [bookings, setBookings] = useState([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
 
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(5);
+  const [pagination, setPagination] = useState({
+    totalItems: 0,
+    totalPages: 1,
+    currentPage: 1,
+    limit: 5,
+  });
+
   // Cancellation Modal State
   const [cancellingBooking, setCancellingBooking] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -67,20 +78,29 @@ function TripsDashboardContent() {
   const [inspections, setInspections] = useState([]);
   const [loadingInspections, setLoadingInspections] = useState(false);
 
-  // Fetch Bookings
-  const fetchBookings = async () => {
+  // Fetch Bookings with server-side status filter and pagination
+  const fetchBookings = useCallback(async () => {
     try {
       setLoadingBookings(true);
-      const res = await api.get("/bookings/my-bookings");
+      const res = await api.get("/bookings/my-bookings", {
+        params: {
+          status: statusFilter !== "ALL" ? statusFilter : undefined,
+          page,
+          limit,
+        },
+      });
       if (res.data?.data && Array.isArray(res.data.data)) {
         setBookings(res.data.data);
+      }
+      if (res.data?.pagination) {
+        setPagination(res.data.pagination);
       }
     } catch (err) {
       console.warn("Could not load bookings:", err.message);
     } finally {
       setLoadingBookings(false);
     }
-  };
+  }, [statusFilter, page, limit]);
 
   // Fetch Wallet Balance
   const fetchWalletBalance = async () => {
@@ -98,6 +118,11 @@ function TripsDashboardContent() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchBookings();
+    }
+  }, [isAuthenticated, fetchBookings]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
       fetchWalletBalance();
     }
   }, [isAuthenticated]);
@@ -189,17 +214,8 @@ function TripsDashboardContent() {
     }
   };
 
-  // Filter Bookings by status
-  const filteredBookings = useMemo(() => {
-    return bookings.filter((b) => {
-      if (statusFilter === "ALL") return true;
-      if (statusFilter === "UPCOMING") return b.status === "CONFIRMED";
-      if (statusFilter === "ACTIVE") return b.status === "ACTIVE_TRIP" || b.status === "EMERGENCY_HOLD";
-      if (statusFilter === "COMPLETED") return b.status === "COMPLETED";
-      if (statusFilter === "CANCELLED") return b.status === "CANCELLED";
-      return true;
-    });
-  }, [bookings, statusFilter]);
+  // Bookings list (backed by server-side status filtering and pagination)
+  const filteredBookings = bookings;
 
   // Status Badge Helper
   const renderStatusBadge = (status) => {
@@ -254,6 +270,57 @@ function TripsDashboardContent() {
         );
     }
   };
+
+  // RESTRICTION FOR STAFF ACCOUNTS
+  if (user?.role && user.role !== "CUSTOMER") {
+    return (
+      <div className="min-h-[calc(100vh-80px)] bg-neutral-950 text-white flex items-center justify-center p-4 sm:p-6 lg:p-8">
+        <div className="max-w-lg w-full rounded-3xl bg-neutral-900 border border-blue-500/30 p-8 text-center space-y-6 shadow-2xl">
+          <div className="w-16 h-16 rounded-3xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center mx-auto shadow-lg shadow-blue-500/10">
+            <Car className="w-8 h-8" />
+          </div>
+
+          <div>
+            <span className="text-xs font-bold uppercase tracking-widest text-blue-400">
+              Staff Account Notice
+            </span>
+            <h1 className="text-2xl font-extrabold text-white mt-1">
+              Customer Bookings Only
+            </h1>
+            <p className="text-xs sm:text-sm text-neutral-400 mt-2 leading-relaxed">
+              As a {user.role === "SUPERADMIN" ? "Superadmin" : "Station Manager"}, your account manages fleet operations rather than personal trips. Consumer bookings are tracked on your operations desk.
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 text-left space-y-2 text-xs">
+            <p className="text-neutral-300 font-semibold">
+              Looking for fleet reservations?
+            </p>
+            <p className="text-[11px] text-neutral-400 leading-relaxed">
+              {user.role === "SUPERADMIN"
+                ? "View and manage all customer bookings enterprise-wide from the Superadmin Bookings Ledger."
+                : "View customer handovers and station vehicle assignments from your Station Dispatch Desk."}
+            </p>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Link
+              href={user.role === "SUPERADMIN" ? "/admin/bookings" : "/manager"}
+              className="flex-1 py-3 px-4 rounded-xl bg-white hover:bg-neutral-200 text-black text-xs font-bold transition-all shadow-md"
+            >
+              {user.role === "SUPERADMIN" ? "Open Bookings Ledger" : "Open Station Desk"}
+            </Link>
+            <Link
+              href="/"
+              className="flex-1 py-3 px-4 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition-colors"
+            >
+              Back to Home
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-neutral-950 text-white font-sans pb-24">
@@ -316,7 +383,10 @@ function TripsDashboardContent() {
               <button
                 key={status}
                 type="button"
-                onClick={() => setStatusFilter(status)}
+                onClick={() => {
+                  setStatusFilter(status);
+                  setPage(1);
+                }}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${statusFilter === status
                     ? "bg-white text-black shadow-md"
                     : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
@@ -526,6 +596,26 @@ function TripsDashboardContent() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {!loadingBookings && pagination.totalItems > 0 && (
+            <div className="pt-2">
+              <Pagination
+                currentPage={pagination.currentPage}
+                totalPages={pagination.totalPages}
+                totalItems={pagination.totalItems}
+                limit={limit}
+                onPageChange={(newPage) => {
+                  setPage(newPage);
+                  window.scrollTo({ top: 250, behavior: "smooth" });
+                }}
+                onLimitChange={(newLimit) => {
+                  setLimit(newLimit);
+                  setPage(1);
+                }}
+                pageSizeOptions={[5, 10, 20, 50]}
+              />
             </div>
           )}
         </div>

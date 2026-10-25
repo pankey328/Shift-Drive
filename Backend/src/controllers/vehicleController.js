@@ -51,8 +51,20 @@ const getVehicles = async (req, res) => {
       return res.status(400).json({ message: "Hub ID is required" });
     }
 
-    const vehicles = await vehicleService.getHubFleet(hubId);
-    return res.status(200).json({ success: true, data: vehicles });
+    const result = await vehicleService.getHubFleet(hubId, req.query);
+
+    if (result && result.pagination) {
+      return res.status(200).json({
+        success: true,
+        data: result.vehicles,
+        pagination: result.pagination,
+        counts: result.counts,
+        categoryCounts: result.categoryCounts,
+        lotMetrics: result.lotMetrics,
+      });
+    }
+
+    return res.status(200).json({ success: true, data: result });
   } catch (error) {
     const statusCode = error.statusCode || 500;
     return res
@@ -196,12 +208,51 @@ const getVehicleById = async (req, res) => {
 
 const getAllVehicles = async (req, res) => {
   try {
-    const { category, hubId, status } = req.query;
-    const vehicles = await vehicleService.getAllFleet({ category, hubId, status });
+    const {
+      search,
+      category,
+      fuel_type,
+      transmission,
+      hubId,
+      status,
+      sortBy,
+      order,
+      page,
+      limit,
+    } = req.query;
+
+    const result = await vehicleService.getAllFleet({
+      search,
+      category,
+      fuel_type,
+      transmission,
+      hubId,
+      status,
+      sortBy,
+      order,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+
+    if (Array.isArray(result)) {
+      return res.status(200).json({
+        success: true,
+        count: result.length,
+        data: result,
+      });
+    }
+
     return res.status(200).json({
       success: true,
-      count: vehicles.length,
-      data: vehicles,
+      count: result.count,
+      data: result.rows,
+      summary: result.summary,
+      pagination: {
+        totalItems: result.count,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        limit: result.limit,
+      },
     });
   } catch (error) {
     const statusCode = error.statusCode || 500;

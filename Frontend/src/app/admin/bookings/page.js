@@ -29,6 +29,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
 } from "lucide-react";
+import Pagination from "@/components/Pagination";
 
 export default function AdminBookingsPage() {
   const [bookings, setBookings] = useState([]);
@@ -40,6 +41,26 @@ export default function AdminBookingsPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [hubFilter, setHubFilter] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    totalItems: 0,
+    totalPages: 1,
+    currentPage: 1,
+    limit: 10,
+  });
+
+  // Debounce search input (800ms delay)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 800);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
   // Inspect Modal
   const [inspectBooking, setInspectBooking] = useState(null);
@@ -64,14 +85,32 @@ export default function AdminBookingsPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      const params = {
+        page,
+        limit,
+        search: debouncedSearch.trim() || undefined,
+        status: statusFilter !== "ALL" ? statusFilter : undefined,
+        hubId: hubFilter !== "ALL" ? hubFilter : undefined,
+      };
+
       const [allRes, emergRes, hubsRes] = await Promise.all([
-        api.get("/bookings/admin/all"),
+        api.get("/bookings/admin/all", { params }),
         api.get("/bookings/admin/emergencies"),
         api.get("/hubs"),
       ]);
 
       if (allRes.data?.success) {
         setBookings(allRes.data.data || []);
+        if (allRes.data.pagination) {
+          setPagination(allRes.data.pagination);
+        } else {
+          setPagination({
+            totalItems: allRes.data.data?.length || 0,
+            totalPages: 1,
+            currentPage: 1,
+            limit,
+          });
+        }
       }
       if (emergRes.data?.success) {
         setEmergencies(emergRes.data.data || []);
@@ -84,7 +123,7 @@ export default function AdminBookingsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, limit, debouncedSearch, statusFilter, hubFilter]);
 
   useEffect(() => {
     fetchData();
@@ -163,27 +202,8 @@ export default function AdminBookingsPage() {
     }
   };
 
-  // Filtered Bookings
-  const filteredBookings = bookings.filter((b) => {
-    const matchesStatus = statusFilter === "ALL" || b.status === statusFilter;
-    const matchesHub =
-      hubFilter === "ALL" ||
-      b.pickup_hub_id === hubFilter ||
-      b.PickupHub?.hubId === hubFilter;
-
-    const query = searchQuery.toLowerCase().trim();
-    const matchesSearch =
-      !query ||
-      b.bookingId?.toLowerCase().includes(query) ||
-      b.Customer?.name?.toLowerCase().includes(query) ||
-      b.Customer?.email?.toLowerCase().includes(query) ||
-      b.Customer?.phone?.toLowerCase().includes(query) ||
-      b.Vehicle?.plate_number?.toLowerCase().includes(query) ||
-      b.Vehicle?.model?.toLowerCase().includes(query) ||
-      b.Vehicle?.make?.toLowerCase().includes(query);
-
-    return matchesStatus && matchesHub && matchesSearch;
-  });
+  // Bookings list (already filtered by backend query)
+  const filteredBookings = bookings;
 
   // KPI calculations
   const totalBookingsCount = bookings.length;
@@ -601,6 +621,22 @@ export default function AdminBookingsPage() {
               })}
             </tbody>
           </table>
+
+          {/* Pagination Toolbar */}
+          <div className="border-t border-neutral-800 px-4 bg-neutral-900/40">
+            <Pagination
+              currentPage={pagination.currentPage}
+              totalPages={pagination.totalPages}
+              totalItems={pagination.totalItems}
+              limit={pagination.limit}
+              onPageChange={(p) => setPage(p)}
+              onLimitChange={(newLimit) => {
+                setLimit(newLimit);
+                setPage(1);
+              }}
+              pageSizeOptions={[10, 20, 50, 100]}
+            />
+          </div>
         </div>
       )}
 

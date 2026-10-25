@@ -140,6 +140,96 @@ const getUserAuditDetails = async (userId) => {
   return details;
 };
 
+const updateUserProfile = async (userId, updateData) => {
+  const User = require("../models/User");
+  const Hub = require("../models/Hub");
+  const { Op } = require("sequelize");
+
+  const user = await User.findByPk(userId);
+  if (!user) {
+    const error = new Error("User not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Update Name
+  if (updateData.name && updateData.name.trim()) {
+    user.name = updateData.name.trim();
+  }
+
+  // Update Email (check uniqueness)
+  if (updateData.email && updateData.email.trim()) {
+    const cleanEmail = updateData.email.trim().toLowerCase();
+    if (cleanEmail !== user.email.toLowerCase()) {
+      const existing = await User.findOne({
+        where: {
+          email: cleanEmail,
+          userId: { [Op.ne]: userId },
+        },
+      });
+      if (existing) {
+        const error = new Error(`Email "${cleanEmail}" is already registered to another user.`);
+        error.statusCode = 400;
+        throw error;
+      }
+      user.email = cleanEmail;
+    }
+  }
+
+  // Update Phone
+  if (updateData.phone !== undefined) {
+    user.phone = updateData.phone ? updateData.phone.trim() : null;
+  }
+
+  // Update Role
+  if (updateData.role) {
+    const validRoles = ["CUSTOMER", "HUB_ADMIN", "SUPERADMIN"];
+    if (!validRoles.includes(updateData.role)) {
+      const error = new Error("Invalid role specified. Must be CUSTOMER, HUB_ADMIN, or SUPERADMIN.");
+      error.statusCode = 400;
+      throw error;
+    }
+    user.role = updateData.role;
+  }
+
+  // Update KYC Status
+  if (updateData.kyc_status) {
+    const validKyc = ["PENDING", "VERIFIED", "REJECTED"];
+    if (validKyc.includes(updateData.kyc_status)) {
+      user.kyc_status = updateData.kyc_status;
+    }
+  }
+
+  // Update Active/Suspended Status
+  if (typeof updateData.is_active === "boolean") {
+    user.is_active = updateData.is_active;
+  }
+
+  // Update Password if provided
+  if (updateData.password && updateData.password.trim()) {
+    user.password = await bcrypt.hash(updateData.password.trim(), 10);
+  }
+
+  await user.save();
+
+  // Handle Hub assignment for HUB_ADMIN
+  if (updateData.hubId !== undefined) {
+    if (user.role === "HUB_ADMIN" && updateData.hubId) {
+      await hubRepository.assignManagerToHub(updateData.hubId, user.userId);
+    } else {
+      // Unlink any hub managed by this user
+      await Hub.update({ manager_id: null }, { where: { manager_id: user.userId } });
+    }
+  }
+
+  const refreshedUser = await User.findByPk(userId, {
+    attributes: ["userId", "name", "email", "phone", "role", "kyc_status", "is_active", "createdAt"],
+    include: [{ model: Hub, as: "ManagedHub", attributes: ["hubId", "name", "city"] }],
+  });
+
+  return refreshedUser;
+};
+
 module.exports = {
   getPendingKycList,
   reviewKyc,
@@ -148,4 +238,5 @@ module.exports = {
   onboardStaff,
   changeUserRole,
   getUserAuditDetails,
+  updateUserProfile,
 };

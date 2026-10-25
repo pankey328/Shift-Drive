@@ -36,6 +36,7 @@ const getDailySchedule = async (hubId, startOfDay, endOfDay, now) => {
             "plate_number",
             "vehicle_class",
             "status",
+          "gallery_urls",
           ],
         },
         {
@@ -74,6 +75,7 @@ const getDailySchedule = async (hubId, startOfDay, endOfDay, now) => {
             "plate_number",
             "vehicle_class",
             "status",
+          "gallery_urls",
           ],
         },
         {
@@ -110,6 +112,7 @@ const getDailySchedule = async (hubId, startOfDay, endOfDay, now) => {
             "plate_number",
             "vehicle_class",
             "status",
+          "gallery_urls",
           ],
         },
         {
@@ -145,6 +148,7 @@ const getDailySchedule = async (hubId, startOfDay, endOfDay, now) => {
             "plate_number",
             "vehicle_class",
             "status",
+          "gallery_urls",
           ],
         },
         {
@@ -201,41 +205,175 @@ const getFleetTransfersByHub = async (hubId, filters = {}) => {
     [Op.or]: [{ source_hub_id: hubId }, { destination_hub_id: hubId }],
   };
 
-  if (filters.status) {
+  if (filters.status && filters.status !== "ALL") {
     where.status = filters.status;
+  }
+
+  if (filters.search) {
+    const searchPattern = `%${filters.search}%`;
+    where[Op.and] = [
+      ...(where[Op.and] || []),
+      {
+        [Op.or]: [
+          { transferId: { [Op.like]: searchPattern } },
+          { driver_name: { [Op.like]: searchPattern } },
+          { driver_phone: { [Op.like]: searchPattern } },
+          { reason: { [Op.like]: searchPattern } },
+          { "$Vehicle.plate_number$": { [Op.like]: searchPattern } },
+          { "$Vehicle.make$": { [Op.like]: searchPattern } },
+          { "$Vehicle.model$": { [Op.like]: searchPattern } },
+          { "$SourceHub.name$": { [Op.like]: searchPattern } },
+          { "$DestinationHub.name$": { [Op.like]: searchPattern } },
+        ],
+      },
+    ];
+  }
+
+  const includeConfig = [
+    {
+      model: Hub,
+      as: "SourceHub",
+      attributes: ["hubId", "name", "city", "address"],
+    },
+    {
+      model: Hub,
+      as: "DestinationHub",
+      attributes: ["hubId", "name", "city", "address"],
+    },
+    {
+      model: Vehicle,
+      as: "Vehicle",
+      attributes: [
+        "vehicleId",
+        "make",
+        "model",
+        "plate_number",
+        "vehicle_class",
+        "status",
+      "gallery_urls",
+      ],
+    },
+    {
+      model: User,
+      as: "Initiator",
+      attributes: ["userId", "name", "email", "phone"],
+    },
+  ];
+
+  if (filters.page || filters.limit) {
+    const page = Math.max(1, parseInt(filters.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(filters.limit, 10) || 10));
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await FleetTransfer.findAndCountAll({
+      where,
+      include: includeConfig,
+      distinct: true,
+      order: [["createdAt", "DESC"]],
+      limit,
+      offset,
+    });
+
+    return {
+      transfers: rows,
+      totalItems: count,
+      totalPages: Math.ceil(count / limit) || 1,
+      currentPage: page,
+      limit,
+    };
   }
 
   return await FleetTransfer.findAll({
     where,
-    include: [
-      {
-        model: Hub,
-        as: "SourceHub",
-        attributes: ["hubId", "name", "city", "address"],
-      },
-      {
-        model: Hub,
-        as: "DestinationHub",
-        attributes: ["hubId", "name", "city", "address"],
-      },
-      {
-        model: Vehicle,
-        as: "Vehicle",
-        attributes: [
-          "vehicleId",
-          "make",
-          "model",
-          "plate_number",
-          "vehicle_class",
-          "status",
-        ],
-      },
-      {
-        model: User,
-        as: "Initiator",
-        attributes: ["userId", "name", "email", "phone"],
-      },
-    ],
+    include: includeConfig,
+    order: [["createdAt", "DESC"]],
+  });
+};
+
+const getAllPlatformFleetTransfers = async (filters = {}) => {
+  const where = {};
+  if (filters.status && filters.status !== "ALL") {
+    where.status = filters.status;
+  }
+  if (filters.sourceHubId && filters.sourceHubId !== "ALL") {
+    where.source_hub_id = filters.sourceHubId;
+  }
+  if (filters.destinationHubId && filters.destinationHubId !== "ALL") {
+    where.destination_hub_id = filters.destinationHubId;
+  }
+
+  if (filters.search) {
+    const searchPattern = `%${filters.search}%`;
+    where[Op.or] = [
+      { transferId: { [Op.like]: searchPattern } },
+      { driver_name: { [Op.like]: searchPattern } },
+      { driver_phone: { [Op.like]: searchPattern } },
+      { reason: { [Op.like]: searchPattern } },
+      { "$Vehicle.plate_number$": { [Op.like]: searchPattern } },
+      { "$Vehicle.make$": { [Op.like]: searchPattern } },
+      { "$Vehicle.model$": { [Op.like]: searchPattern } },
+      { "$SourceHub.name$": { [Op.like]: searchPattern } },
+      { "$DestinationHub.name$": { [Op.like]: searchPattern } },
+    ];
+  }
+
+  const includeConfig = [
+    {
+      model: Hub,
+      as: "SourceHub",
+      attributes: ["hubId", "name", "city", "address"],
+    },
+    {
+      model: Hub,
+      as: "DestinationHub",
+      attributes: ["hubId", "name", "city", "address"],
+    },
+    {
+      model: Vehicle,
+      as: "Vehicle",
+      attributes: [
+        "vehicleId",
+        "make",
+        "model",
+        "plate_number",
+        "vehicle_class",
+        "status",
+        "gallery_urls",
+      ],
+    },
+    {
+      model: User,
+      as: "Initiator",
+      attributes: ["userId", "name", "email", "phone"],
+    },
+  ];
+
+  if (filters.page || filters.limit) {
+    const page = Math.max(1, parseInt(filters.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(filters.limit, 10) || 10));
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await FleetTransfer.findAndCountAll({
+      where,
+      include: includeConfig,
+      distinct: true,
+      order: [["createdAt", "DESC"]],
+      limit,
+      offset,
+    });
+
+    return {
+      transfers: rows,
+      totalItems: count,
+      totalPages: Math.ceil(count / limit) || 1,
+      currentPage: page,
+      limit,
+    };
+  }
+
+  return await FleetTransfer.findAll({
+    where,
+    include: includeConfig,
     order: [["createdAt", "DESC"]],
   });
 };
@@ -278,6 +416,35 @@ const findCustomerByContact = async ({ email, phone }) => {
   });
 };
 
+const findCustomerByQuery = async (query) => {
+  const isEmail = query.includes("@");
+  const conditions = [];
+
+  if (isEmail) {
+    conditions.push({ email: query.toLowerCase().trim() });
+  } else {
+    conditions.push({ phone: query.trim() });
+    conditions.push({ phone: { [Op.like]: `%${query.trim()}%` } });
+    conditions.push({ email: { [Op.like]: `%${query.trim()}%` } });
+    conditions.push({ name: { [Op.like]: `%${query.trim()}%` } });
+  }
+
+  return await User.findOne({
+    where: {
+      role: "CUSTOMER",
+      [Op.or]: conditions,
+    },
+    attributes: [
+      "userId",
+      "name",
+      "email",
+      "phone",
+      "kyc_status",
+      "kyc_document_url",
+    ],
+  });
+};
+
 const createWalkInCustomer = async (userData) => {
   return await User.create(userData);
 };
@@ -298,41 +465,84 @@ const createLostItemRecord = async (itemData) => {
 const getLostItemsByHub = async (hubId, filters = {}) => {
   const where = { hub_id: hubId };
 
-  if (filters.status) where.status = filters.status;
-  if (filters.category) where.category = filters.category;
+  if (filters.status && filters.status !== "ALL") where.status = filters.status;
+  if (filters.category && filters.category !== "ALL") where.category = filters.category;
   if (filters.vehicle_id) where.vehicle_id = filters.vehicle_id;
+
+  if (filters.search) {
+    const searchPattern = `%${filters.search}%`;
+    where[Op.and] = [
+      ...(where[Op.and] || []),
+      {
+        [Op.or]: [
+          { item_name: { [Op.like]: searchPattern } },
+          { description: { [Op.like]: searchPattern } },
+          { storage_location: { [Op.like]: searchPattern } },
+          { claimed_by_name: { [Op.like]: searchPattern } },
+          { "$Vehicle.plate_number$": { [Op.like]: searchPattern } },
+          { "$Vehicle.make$": { [Op.like]: searchPattern } },
+          { "$Vehicle.model$": { [Op.like]: searchPattern } },
+        ],
+      },
+    ];
+  }
+
+  const includeConfig = [
+    {
+      model: Vehicle,
+      as: "Vehicle",
+      attributes: [
+        "vehicleId",
+        "make",
+        "model",
+        "plate_number",
+        "vehicle_class",
+      ],
+    },
+    {
+      model: Booking,
+      as: "Booking",
+      attributes: [
+        "bookingId",
+        "user_id",
+        "start_time",
+        "end_time",
+        "status",
+      ],
+    },
+    {
+      model: User,
+      as: "LoggedBy",
+      attributes: ["userId", "name", "email"],
+    },
+  ];
+
+  if (filters.page || filters.limit) {
+    const page = Math.max(1, parseInt(filters.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(filters.limit, 10) || 10));
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await LostAndFound.findAndCountAll({
+      where,
+      include: includeConfig,
+      distinct: true,
+      order: [["createdAt", "DESC"]],
+      limit,
+      offset,
+    });
+
+    return {
+      items: rows,
+      totalItems: count,
+      totalPages: Math.ceil(count / limit) || 1,
+      currentPage: page,
+      limit,
+    };
+  }
 
   return await LostAndFound.findAll({
     where,
-    include: [
-      {
-        model: Vehicle,
-        as: "Vehicle",
-        attributes: [
-          "vehicleId",
-          "make",
-          "model",
-          "plate_number",
-          "vehicle_class",
-        ],
-      },
-      {
-        model: Booking,
-        as: "Booking",
-        attributes: [
-          "bookingId",
-          "user_id",
-          "start_time",
-          "end_time",
-          "status",
-        ],
-      },
-      {
-        model: User,
-        as: "LoggedBy",
-        attributes: ["userId", "name", "email"],
-      },
-    ],
+    include: includeConfig,
     order: [["createdAt", "DESC"]],
   });
 };
@@ -610,9 +820,11 @@ module.exports = {
   getHubFleetStats,
   createFleetTransferRecord,
   getFleetTransfersByHub,
+  getAllPlatformFleetTransfers,
   findFleetTransferById,
   updateFleetTransfer,
   findCustomerByContact,
+  findCustomerByQuery,
   createWalkInCustomer,
   createPosBookingRecord,
   recordPosPayment,

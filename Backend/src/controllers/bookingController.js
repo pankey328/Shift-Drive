@@ -111,17 +111,29 @@ const forceCancel = async (req, res) => {
 
 const listAllBookings = async (req, res) => {
   try {
-    const { status, userId, vehicleId } = req.query;
+    const { status, userId, vehicleId, hubId, search, q, sortBy, order, page, limit } = req.query;
     const filters = {};
-    if (status) filters.status = status;
+    if (status && status !== "ALL") filters.status = status;
     if (userId) filters.userId = userId;
     if (vehicleId) filters.vehicleId = vehicleId;
+    if (hubId && hubId !== "ALL") filters.hubId = hubId;
+    if (search || q) filters.search = (search || q).trim();
+    if (sortBy) filters.sortBy = sortBy;
+    if (order) filters.order = order;
+    if (page) filters.page = parseInt(page, 10);
+    if (limit) filters.limit = parseInt(limit, 10);
 
-    const bookings = await bookingService.fetchAdminBookings(filters);
+    const result = await bookingService.fetchAdminBookings(filters);
     return res.status(200).json({
       success: true,
-      total: bookings.length,
-      data: bookings,
+      total: result.totalItems,
+      data: result.bookings,
+      pagination: {
+        totalItems: result.totalItems,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        limit: result.limit,
+      },
     });
   } catch (error) {
     const statusCode = error.statusCode || 500;
@@ -132,13 +144,24 @@ const listAllBookings = async (req, res) => {
 const getUserBookings = async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
-    const { status } = req.query;
+    const { status, page, limit } = req.query;
 
-    const bookings = await bookingService.fetchUserBookings(userId, { status });
+    const result = await bookingService.fetchUserBookings(userId, {
+      status,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+
     return res.status(200).json({
       success: true,
-      count: bookings.length,
-      data: bookings,
+      count: result.totalItems,
+      data: result.bookings,
+      pagination: {
+        totalItems: result.totalItems,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        limit: result.limit,
+      },
     });
   } catch (error) {
     const statusCode = error.statusCode || 500;

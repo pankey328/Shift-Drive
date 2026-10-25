@@ -1,3 +1,4 @@
+const { Op } = require("sequelize");
 const { User, Hub, Booking, Vehicle } = require("../models");
 
 const findUserByEmail = async (email) => {
@@ -120,14 +121,31 @@ const updateUserAccountStatus = async (userId, is_active) => {
   return user;
 };
 
-// List all users with optional filters
+// List users with search, filtering, sorting, and pagination
 const getAllUsersList = async (filters = {}) => {
   const where = {};
   if (filters.role) where.role = filters.role;
   if (filters.is_active !== undefined) where.is_active = filters.is_active;
   if (filters.kyc_status) where.kyc_status = filters.kyc_status;
 
-  return await User.findAll({
+  if (filters.search) {
+    const searchPattern = `%${filters.search}%`;
+    where[Op.or] = [
+      { name: { [Op.like]: searchPattern } },
+      { email: { [Op.like]: searchPattern } },
+      { phone: { [Op.like]: searchPattern } },
+    ];
+  }
+
+  const page = Math.max(1, parseInt(filters.page, 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(filters.limit, 10) || 20));
+  const offset = (page - 1) * limit;
+
+  const validSortColumns = ["createdAt", "name", "email", "wallet_balance", "kyc_status", "role"];
+  const sortBy = validSortColumns.includes(filters.sortBy) ? filters.sortBy : "createdAt";
+  const order = filters.order && filters.order.toUpperCase() === "ASC" ? "ASC" : "DESC";
+
+  const { count, rows } = await User.findAndCountAll({
     where,
     attributes: { exclude: ["password", "otp", "otpExpiry"] },
     include: [
@@ -137,8 +155,18 @@ const getAllUsersList = async (filters = {}) => {
         attributes: ["hubId", "name", "city", "status"],
       },
     ],
-    order: [["createdAt", "DESC"]],
+    order: [[sortBy, order]],
+    limit,
+    offset,
   });
+
+  return {
+    users: rows,
+    totalItems: count,
+    totalPages: Math.ceil(count / limit) || 1,
+    currentPage: page,
+    limit,
+  };
 };
 
 const findUserAuditDetails = async (userId) => {

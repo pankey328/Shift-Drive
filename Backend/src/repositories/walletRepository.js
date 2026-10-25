@@ -1,4 +1,5 @@
 const { User, WalletTransaction, sequelize } = require("../models");
+const { Op } = require("sequelize");
 
 // Atomic transaction to update user wallet balance and create transaction log
 const processFinancialMovement = async ({
@@ -42,9 +43,40 @@ const processFinancialMovement = async ({
 };
 
 // Fetch wallet transaction history for a user (newest first)
-const getTransactionHistory = async (userId) => {
+const getTransactionHistory = async (userId, filters = {}) => {
+  const where = { user_id: userId };
+
+  if (filters.type === "CREDIT") {
+    where.amount = { [Op.gt]: 0 };
+  } else if (filters.type === "DEBIT") {
+    where.amount = { [Op.lt]: 0 };
+  } else if (filters.type && filters.type !== "ALL") {
+    where.type = filters.type;
+  }
+
+  if (filters.page || filters.limit) {
+    const page = Math.max(1, parseInt(filters.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(filters.limit, 10) || 10));
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await WalletTransaction.findAndCountAll({
+      where,
+      order: [["createdAt", "DESC"]],
+      limit,
+      offset,
+    });
+
+    return {
+      transactions: rows,
+      totalItems: count,
+      totalPages: Math.ceil(count / limit) || 1,
+      currentPage: page,
+      limit,
+    };
+  }
+
   return await WalletTransaction.findAll({
-    where: { user_id: userId },
+    where,
     order: [["createdAt", "DESC"]],
   });
 };

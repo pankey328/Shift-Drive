@@ -7,12 +7,20 @@ const {
   fetchInspections,
   getManagerInspections,
   getAllInspections,
+  handleGetInspectionComparison,
 } = require("../controllers/inspectionController");
 
 router.use(protect);
 
-// Superadmin views all inspections
+// Superadmin views all inspections with damage flags & fines
 router.get("/admin/all", authorize("SUPERADMIN"), getAllInspections);
+
+// Superadmin or Manager gets side-by-side pre-trip vs post-trip audit for a booking
+router.get(
+  "/audit/comparison/:bookingId",
+  authorize("SUPERADMIN", "HUB_ADMIN"),
+  handleGetInspectionComparison,
+);
 
 // Superadmin audits which inspections and photos a specific manager conducted
 router.get(

@@ -37,6 +37,11 @@ const createNewHub = async ({
     finalLng = coords.longitude;
   }
 
+  if (manager_id) {
+    const { Hub } = require("../models");
+    await Hub.update({ manager_id: null }, { where: { manager_id } });
+  }
+
   const newHub = await hubRepository.createHub({
     name,
     city,

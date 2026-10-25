@@ -92,7 +92,13 @@ export default function ManagerDispatchPage() {
         if (overrideHubId) {
           target = hubs.find((h) => h.hubId === overrideHubId);
         } else if (user?.role === "HUB_ADMIN") {
-          target = hubs.find((h) => h.manager_id === user.userId) || hubs[0];
+          const userIdentifier = user?.userId || user?.id;
+          const userEmail = user?.email?.toLowerCase().trim();
+          target = hubs.find((h) => {
+            const idMatch = userIdentifier && (h.manager_id === userIdentifier || h.Manager?.userId === userIdentifier);
+            const emailMatch = userEmail && h.Manager?.email?.toLowerCase().trim() === userEmail;
+            return idMatch || emailMatch;
+          }) || hubs[0];
         } else {
           target = hubs[0];
         }
@@ -362,16 +368,29 @@ export default function ManagerDispatchPage() {
                 className="p-4 rounded-2xl bg-black/80 border border-red-700/60 flex flex-col justify-between gap-4 text-xs"
               >
                 <div className="space-y-2">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <span className="font-extrabold text-white text-sm block">
-                        {booking.Vehicle?.make} {booking.Vehicle?.model}
-                      </span>
-                      <span className="text-[11px] font-mono font-bold text-red-400">
-                        {booking.Vehicle?.plate_number}
-                      </span>
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-14 h-11 rounded-xl bg-neutral-950 border border-neutral-800 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                        {booking.Vehicle?.gallery_urls && booking.Vehicle.gallery_urls.length > 0 ? (
+                          <img
+                            src={booking.Vehicle.gallery_urls[0]}
+                            alt={`${booking.Vehicle?.make} ${booking.Vehicle?.model}`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Car className="w-5 h-5 text-neutral-600" />
+                        )}
+                      </div>
+                      <div>
+                        <span className="font-extrabold text-white text-sm block">
+                          {booking.Vehicle?.make} {booking.Vehicle?.model}
+                        </span>
+                        <span className="text-[11px] font-mono font-bold text-red-400">
+                          {booking.Vehicle?.plate_number}
+                        </span>
+                      </div>
                     </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-900/80 border border-red-700 text-red-300">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-900/80 border border-red-700 text-red-300 flex-shrink-0">
                       EMERGENCY HOLD
                     </span>
                   </div>
@@ -641,13 +660,26 @@ export default function ManagerDispatchPage() {
                 className="p-4 rounded-2xl bg-black/60 border border-red-900/40 flex flex-col justify-between gap-3 text-xs"
               >
                 <div className="space-y-1">
-                  <div className="flex justify-between items-start">
-                    <span className="font-bold text-white text-sm">
-                      {booking.Vehicle?.make} {booking.Vehicle?.model}
-                    </span>
-                    <span className="font-mono text-red-400 font-bold">
-                      {booking.Vehicle?.plate_number}
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-14 h-11 rounded-xl bg-neutral-950 border border-neutral-800 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                      {booking.Vehicle?.gallery_urls && booking.Vehicle.gallery_urls.length > 0 ? (
+                        <img
+                          src={booking.Vehicle.gallery_urls[0]}
+                          alt={`${booking.Vehicle?.make} ${booking.Vehicle?.model}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Car className="w-5 h-5 text-neutral-600" />
+                      )}
+                    </div>
+                    <div>
+                      <span className="font-bold text-white text-sm block">
+                        {booking.Vehicle?.make} {booking.Vehicle?.model}
+                      </span>
+                      <span className="font-mono text-red-400 font-bold text-xs">
+                        {booking.Vehicle?.plate_number}
+                      </span>
+                    </div>
                   </div>
                   <div className="text-neutral-400 space-y-1">
                     <p>
@@ -738,13 +770,26 @@ export default function ManagerDispatchPage() {
                     </span>
                   </div>
 
-                  <div>
-                    <h3 className="text-base font-bold text-white">
-                      {booking.Vehicle?.make} {booking.Vehicle?.model}
-                    </h3>
-                    <span className="font-mono text-xs font-semibold text-emerald-400">
-                      {booking.Vehicle?.plate_number}
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-14 h-11 rounded-xl bg-neutral-950 border border-neutral-800 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                      {booking.Vehicle?.gallery_urls && booking.Vehicle.gallery_urls.length > 0 ? (
+                        <img
+                          src={booking.Vehicle.gallery_urls[0]}
+                          alt={`${booking.Vehicle?.make} ${booking.Vehicle?.model}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Car className="w-5 h-5 text-neutral-600" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white">
+                        {booking.Vehicle?.make} {booking.Vehicle?.model}
+                      </h3>
+                      <span className="font-mono text-xs font-semibold text-emerald-400">
+                        {booking.Vehicle?.plate_number}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="p-3 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-1.5 text-xs">
@@ -849,13 +894,26 @@ export default function ManagerDispatchPage() {
                     </span>
                   </div>
 
-                  <div>
-                    <h3 className="text-base font-bold text-white">
-                      {booking.Vehicle?.make} {booking.Vehicle?.model}
-                    </h3>
-                    <span className="font-mono text-xs font-semibold text-blue-400">
-                      {booking.Vehicle?.plate_number}
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-14 h-11 rounded-xl bg-neutral-950 border border-neutral-800 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                      {booking.Vehicle?.gallery_urls && booking.Vehicle.gallery_urls.length > 0 ? (
+                        <img
+                          src={booking.Vehicle.gallery_urls[0]}
+                          alt={`${booking.Vehicle?.make} ${booking.Vehicle?.model}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Car className="w-5 h-5 text-neutral-600" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white">
+                        {booking.Vehicle?.make} {booking.Vehicle?.model}
+                      </h3>
+                      <span className="font-mono text-xs font-semibold text-blue-400">
+                        {booking.Vehicle?.plate_number}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="p-3 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-1 text-xs">
@@ -898,15 +956,17 @@ export default function ManagerDispatchPage() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="max-w-lg w-full rounded-3xl bg-neutral-900 border border-neutral-800 p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                    inspectionModal.type === "PRE_TRIP"
-                      ? "bg-emerald-500/10 text-emerald-400"
-                      : "bg-blue-500/10 text-blue-400"
-                  }`}
-                >
-                  <Camera className="w-5 h-5" />
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-11 rounded-xl bg-neutral-950 border border-neutral-800 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                  {inspectionModal.booking?.Vehicle?.gallery_urls && inspectionModal.booking.Vehicle.gallery_urls.length > 0 ? (
+                    <img
+                      src={inspectionModal.booking.Vehicle.gallery_urls[0]}
+                      alt={`${inspectionModal.booking.Vehicle?.make} ${inspectionModal.booking.Vehicle?.model}`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Car className="w-5 h-5 text-neutral-600" />
+                  )}
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">

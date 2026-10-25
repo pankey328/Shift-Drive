@@ -25,10 +25,18 @@ const initiateBooking = async (
   userId,
   { vehicleId, pickupHubId, dropoffHubId, startTime, endTime }
 ) => {
-  // Validate customer account status
+  // Validate customer account status & role
   const customer = await userRepository.findUserById(userId);
   if (!customer || customer.is_active === false) {
     const error = new Error("Your account has been deactivated or suspended. Please contact customer support.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (customer.role !== "CUSTOMER") {
+    const error = new Error(
+      "Administrative and station staff accounts cannot create consumer rental bookings. Please sign in with a Customer account or use Fleet Transfers for station dispatch."
+    );
     error.statusCode = 403;
     throw error;
   }
@@ -115,7 +123,14 @@ const initiateBooking = async (
   // Find busy vehicle IDs
   const busyVehicleIds = await findBusyVehicleIds(paddedStart, paddedEnd);
 
-  let assignedVehicle = null;
+  // Requested vehicle must be stationed at the chosen pickup hub
+  if (requestedVehicle.current_hub_id !== pickupHubId) {
+    const error = new Error(
+      `Sorry, ${requestedVehicle.make} ${requestedVehicle.model} (${requestedVehicle.plate_number}) is stationed at another station, not at ${pickupHub.name}. Please select a vehicle stationed at ${pickupHub.name}.`
+    );
+    error.statusCode = 409;
+    throw error;
+  }
 
   // Is requested physical car available?
   if (
@@ -124,7 +139,7 @@ const initiateBooking = async (
   ) {
     assignedVehicle = requestedVehicle;
   } else {
-    // Search for another car with same make and model at pickup hub
+    // If busy, search for another car with same make and model at this same pickup hub
     assignedVehicle = await vehicleRepository.findAlternativeVehicle({
       hubId: pickupHubId,
       make: requestedVehicle.make,
@@ -135,7 +150,7 @@ const initiateBooking = async (
 
   if (!assignedVehicle) {
     const error = new Error(
-      `Sorry, all ${requestedVehicle.make} ${requestedVehicle.model}s are booked for these dates. Please select a different car.`
+      `Sorry, all ${requestedVehicle.make} ${requestedVehicle.model}s at ${pickupHub.name} are booked for these dates. Please select a different car.`
     );
     error.statusCode = 409;
     throw error;
@@ -186,6 +201,14 @@ const confirmBookingPayment = async (userId, bookingId) => {
   const user = await userRepository.findUserById(userId);
   if (!user || user.is_active === false) {
     const error = new Error("Your account has been deactivated or suspended. Please contact customer support.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (user.role !== "CUSTOMER") {
+    const error = new Error(
+      "Administrative and station staff accounts cannot confirm consumer rental payments."
+    );
     error.statusCode = 403;
     throw error;
   }

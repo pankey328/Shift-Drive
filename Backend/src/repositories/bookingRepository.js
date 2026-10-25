@@ -161,15 +161,43 @@ const forceCancelBookingRecord = async (bookingId, { cancellation_reason, incide
   return booking;
 };
 
-// List all bookings for admin with filters
+// List all bookings for admin with search, filters, sorting, and pagination
 const getAllBookingsAdmin = async (filters = {}) => {
   const where = {};
   if (filters.status && filters.status !== "ALL") where.status = filters.status;
   if (filters.userId) where.user_id = filters.userId;
   if (filters.vehicleId) where.vehicle_id = filters.vehicleId;
+  if (filters.hubId && filters.hubId !== "ALL") {
+    where[Op.or] = [
+      { pickup_hub_id: filters.hubId },
+      { dropoff_hub_id: filters.hubId },
+    ];
+  }
 
-  return await Booking.findAll({
+  if (filters.search) {
+    const searchPattern = `%${filters.search}%`;
+    where[Op.or] = [
+      { bookingId: { [Op.like]: searchPattern } },
+      { "$Customer.name$": { [Op.like]: searchPattern } },
+      { "$Customer.email$": { [Op.like]: searchPattern } },
+      { "$Customer.phone$": { [Op.like]: searchPattern } },
+      { "$Vehicle.plate_number$": { [Op.like]: searchPattern } },
+      { "$Vehicle.make$": { [Op.like]: searchPattern } },
+      { "$Vehicle.model$": { [Op.like]: searchPattern } },
+    ];
+  }
+
+  const page = Math.max(1, parseInt(filters.page, 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(filters.limit, 10) || 20));
+  const offset = (page - 1) * limit;
+
+  const validSortColumns = ["createdAt", "start_time", "end_time", "total_price", "status"];
+  const sortBy = validSortColumns.includes(filters.sortBy) ? filters.sortBy : "createdAt";
+  const order = filters.order && filters.order.toUpperCase() === "ASC" ? "ASC" : "DESC";
+
+  const { count, rows } = await Booking.findAndCountAll({
     where,
+    distinct: true,
     include: [
       {
         model: User,
@@ -192,17 +220,40 @@ const getAllBookingsAdmin = async (filters = {}) => {
         attributes: ["hubId", "name", "city"],
       },
     ],
-    order: [["createdAt", "DESC"]],
+    order: [[sortBy, order]],
+    limit,
+    offset,
   });
+
+  return {
+    bookings: rows,
+    totalItems: count,
+    totalPages: Math.ceil(count / limit) || 1,
+    currentPage: page,
+    limit,
+  };
 };
 
-// List bookings for a specific customer with complete details
+// List bookings for a specific customer with complete details and pagination
 const getUserBookings = async (userId, filters = {}) => {
   const where = { user_id: userId };
-  if (filters.status) where.status = filters.status;
+  if (filters.status && filters.status !== "ALL") {
+    if (filters.status === "ACTIVE") {
+      where.status = { [Op.in]: ["ACTIVE_TRIP", "EMERGENCY_HOLD"] };
+    } else if (filters.status === "UPCOMING") {
+      where.status = "CONFIRMED";
+    } else {
+      where.status = filters.status;
+    }
+  }
 
-  return await Booking.findAll({
+  const page = Math.max(1, parseInt(filters.page, 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(filters.limit, 10) || 10));
+  const offset = (page - 1) * limit;
+
+  const { count, rows } = await Booking.findAndCountAll({
     where,
+    distinct: true,
     include: [
       {
         model: Vehicle,
@@ -257,7 +308,17 @@ const getUserBookings = async (userId, filters = {}) => {
       },
     ],
     order: [["createdAt", "DESC"]],
+    limit,
+    offset,
   });
+
+  return {
+    bookings: rows,
+    totalItems: count,
+    totalPages: Math.ceil(count / limit) || 1,
+    currentPage: page,
+    limit,
+  };
 };
 
 // Customer cancels booking

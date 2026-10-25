@@ -9,6 +9,7 @@ const {
   handleCompleteTransfer,
   handleCancelTransfer,
   handleListTransfers,
+  handleCustomerLookup,
   handleWalkInBooking,
   handleLogLostItem,
   handleGetLostItems,
@@ -37,7 +38,8 @@ router.patch("/transfers/:transferId/start", handleStartTransfer);
 router.patch("/transfers/:transferId/complete", handleCompleteTransfer);
 router.patch("/transfers/:transferId/cancel", handleCancelTransfer);
 
-// Walk-In POS (Point of Sale Instant Rental)
+// Walk-In POS (Point of Sale Instant Rental & Customer Lookup)
+router.get("/pos/customer-lookup", handleCustomerLookup);
 router.post("/pos/book", handleWalkInBooking);
 
 // Lost & Found Registry

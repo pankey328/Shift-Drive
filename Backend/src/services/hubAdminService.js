@@ -1,6 +1,8 @@
 const hubAdminRepository = require("../repositories/hubAdminRepository");
 const vehicleRepository = require("../repositories/vehicleRepository");
 const hubRepository = require("../repositories/hubRepository");
+const userRepository = require("../repositories/userRepository");
+const { User } = require("../models");
 const { getTimeString, isWithinOperatingHours } = require("../utils/timeUtils");
 const { uploadImage } = require("../utils/cloudinary");
 const crypto = require("crypto");
@@ -17,7 +19,8 @@ const resolveManagerHub = async (user, requestedHubId = null) => {
     return user.hub_id;
   }
 
-  const managedHub = await hubAdminRepository.findHubByManagerId(user.userId);
+  const managerId = user.userId || user.id;
+  const managedHub = await hubAdminRepository.findHubByManagerId(managerId);
   if (!managedHub) {
     const error = new Error(
       "Unauthorized: No active Hub assigned to this manager.",
@@ -155,13 +158,39 @@ const requestFleetTransfer = async ({
     throw error;
   }
 
+  // Validate and resolve initiator user to satisfy foreign key constraint on users(userId)
+  let validInitiatorId = initiated_by;
+  if (validInitiatorId) {
+    const existingUser = await userRepository.findUserById(validInitiatorId);
+    if (!existingUser) {
+      validInitiatorId = null;
+    }
+  }
+
+  if (!validInitiatorId) {
+    // If initiated_by is invalid or missing (e.g. stale JWT token or re-seeded user record),
+    // safely fallback to an active SUPERADMIN or HUB_ADMIN in the database
+    const fallbackUser =
+      (await User.findOne({ where: { role: "SUPERADMIN" } })) ||
+      (await User.findOne({ where: { role: "HUB_ADMIN" } }));
+    if (fallbackUser) {
+      validInitiatorId = fallbackUser.userId;
+    } else {
+      const error = new Error(
+        "No active administrator or hub manager account found to initiate transfer.",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
   const status = immediate_transit ? "IN_TRANSIT" : "PENDING";
 
   const transfer = await hubAdminRepository.createFleetTransferRecord({
     source_hub_id,
     destination_hub_id,
     vehicle_id,
-    initiated_by,
+    initiated_by: validInitiatorId,
     driver_name,
     driver_phone,
     reason: reason || "Inventory rebalancing",
@@ -254,7 +283,20 @@ const listHubTransfers = async (hubId, filters) => {
   return await hubAdminRepository.getFleetTransfersByHub(hubId, filters);
 };
 
+const listAllPlatformTransfers = async (filters = {}) => {
+  return await hubAdminRepository.getAllPlatformFleetTransfers(filters);
+};
+
 // WALK-IN POS (POINT OF SALE)
+const lookupCustomer = async (query) => {
+  if (!query || !query.trim()) {
+    const error = new Error("Query string is required for customer lookup.");
+    error.statusCode = 400;
+    throw error;
+  }
+  return await hubAdminRepository.findCustomerByQuery(query.trim());
+};
+
 const processWalkInRental = async ({
   hubId,
   customerData,
@@ -546,6 +588,8 @@ module.exports = {
   completeFleetTransfer,
   cancelFleetTransfer,
   listHubTransfers,
+  listAllPlatformTransfers,
+  lookupCustomer,
   processWalkInRental,
   logLostItem,
   fetchLostItems,

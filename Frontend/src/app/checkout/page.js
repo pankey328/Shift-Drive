@@ -13,6 +13,7 @@ import {
   MapPin,
   Calendar,
   ShieldCheck,
+  ShieldAlert,
   AlertTriangle,
   CheckCircle2,
   Wallet,
@@ -121,6 +122,11 @@ function CheckoutContent() {
       return;
     }
 
+    if (user?.role && user.role !== "CUSTOMER") {
+      setHoldError("Staff and Administrative accounts cannot create consumer rental bookings.");
+      return;
+    }
+
     setInitiatingHold(true);
     setHoldError("");
 
@@ -149,12 +155,22 @@ function CheckoutContent() {
     }
   };
 
-  // Auto-initiate hold on load if user is authenticated and params are present
+  // Auto-initiate hold on load if user is authenticated customer and params are present
   useEffect(() => {
-    if (isAuthenticated && vehicleId && pickupHubId && startTime && endTime && !booking && !initiatingHold && !holdError) {
+    if (
+      isAuthenticated &&
+      user?.role === "CUSTOMER" &&
+      vehicleId &&
+      pickupHubId &&
+      startTime &&
+      endTime &&
+      !booking &&
+      !initiatingHold &&
+      !holdError
+    ) {
       handleInitiateHold();
     }
-  }, [isAuthenticated, vehicleId, pickupHubId, startTime, endTime]);
+  }, [isAuthenticated, user?.role, vehicleId, pickupHubId, startTime, endTime]);
 
   // 5-Minute Countdown Timer
   useEffect(() => {
@@ -282,6 +298,63 @@ function CheckoutContent() {
     const s = secs % 60;
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
+
+  // RESTRICTION FOR STAFF ACCOUNTS (SUPERADMIN & HUB_ADMIN)
+  if (isAuthenticated && user?.role && user.role !== "CUSTOMER") {
+    return (
+      <div className="relative min-h-[calc(100vh-80px)] bg-neutral-950 text-white flex items-center justify-center p-4 sm:p-6 lg:p-8">
+        <div className="max-w-lg w-full rounded-3xl bg-neutral-900 border border-amber-500/30 p-8 text-center space-y-6 shadow-2xl">
+          <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/10">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+
+          <div>
+            <span className="text-xs font-bold uppercase tracking-widest text-amber-400">
+              Staff Account Notice
+            </span>
+            <h1 className="text-2xl font-extrabold text-white mt-1">
+              Consumer Bookings Restricted
+            </h1>
+            <p className="text-xs sm:text-sm text-neutral-400 mt-2 leading-relaxed">
+              Administrative and Station Staff accounts are restricted from placing consumer car bookings to prevent conflicts of interest and maintain audit integrity.
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 text-left space-y-2 text-xs">
+            <div className="flex items-center gap-2 text-neutral-300 font-semibold">
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              <span>Personal Rentals:</span>
+            </div>
+            <p className="text-[11px] text-neutral-400 pl-4">
+              Please sign in with a standard Customer account to rent vehicles for personal use.
+            </p>
+            <div className="flex items-center gap-2 text-neutral-300 font-semibold pt-2">
+              <span className="w-2 h-2 rounded-full bg-purple-400" />
+              <span>Operational Transport:</span>
+            </div>
+            <p className="text-[11px] text-neutral-400 pl-4">
+              For hub relocations or maintenance runs, use the Fleet Transfers desk in your management portal.
+            </p>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Link
+              href={user.role === "SUPERADMIN" ? "/admin" : "/manager"}
+              className="flex-1 py-3 px-4 rounded-xl bg-white hover:bg-neutral-200 text-black text-xs font-bold transition-all shadow-md"
+            >
+              {user.role === "SUPERADMIN" ? "Go to Superadmin HQ" : "Go to Station Desk"}
+            </Link>
+            <Link
+              href="/fleet"
+              className="flex-1 py-3 px-4 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition-colors"
+            >
+              Browse Fleet
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // SUCCESS CONFIRMATION SCREEN
   if (confirmedBooking) {

@@ -13,12 +13,12 @@ import {
   ShieldCheck,
   Users,
   LogOut,
-  ExternalLink,
   Menu,
   X,
   Gauge,
   Sparkles,
   ClipboardCheck,
+  ArrowRightLeft,
 } from "lucide-react";
 
 export default function SuperadminLayout({ children }) {
@@ -92,6 +92,20 @@ export default function SuperadminLayout({ children }) {
       icon: Users,
       description: "Staff & customer directory",
     },
+    {
+      label: "Inspection Audits",
+      href: "/admin/inspections",
+      exact: false,
+      icon: ClipboardCheck,
+      description: "Pre & post trip damage audits",
+    },
+    {
+      label: "Fleet Transfers",
+      href: "/admin/transfers",
+      exact: false,
+      icon: ArrowRightLeft,
+      description: "Inter-hub deadhead dispatch",
+    },
   ];
 
   if (loading || !isAuthenticated || user?.role !== "SUPERADMIN") {
@@ -117,12 +131,13 @@ export default function SuperadminLayout({ children }) {
 
       {/* Main Persistent Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 bg-neutral-900 border-r border-neutral-800 flex flex-col justify-between transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-          }`}
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-neutral-900 border-r border-neutral-800 flex flex-col justify-between transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:translate-x-0 flex-shrink-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
       >
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full overflow-hidden">
           {/* Header Brand */}
-          <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
+          <div className="p-5 border-b border-neutral-800 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-600/30">
                 <Gauge className="w-5 h-5" />
@@ -183,27 +198,10 @@ export default function SuperadminLayout({ children }) {
                 </Link>
               );
             })}
-
-            {/* Quick Switch to Station Dispatch Desk */}
-            <div className="pt-4 border-t border-neutral-800/80 mt-4 space-y-2">
-              <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                Ground Stations
-              </div>
-              <Link
-                href="/manager"
-                className="flex items-center justify-between p-3 rounded-2xl bg-neutral-950 border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white transition-all text-xs font-semibold group"
-              >
-                <div className="flex items-center gap-2.5">
-                  <ClipboardCheck className="w-4 h-4 text-emerald-400" />
-                  <span>Station Dispatch Desk</span>
-                </div>
-                <ExternalLink className="w-3.5 h-3.5 text-neutral-500 group-hover:text-neutral-300" />
-              </Link>
-            </div>
           </div>
 
           {/* User Profile & Sign Out Footer */}
-          <div className="p-4 border-t border-neutral-800 bg-neutral-950/60">
+          <div className="p-4 border-t border-neutral-800 bg-neutral-950/60 flex-shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-xs font-bold text-purple-300">
@@ -245,14 +243,6 @@ export default function SuperadminLayout({ children }) {
             </button>
             <span className="font-extrabold text-sm text-white">Superadmin HQ</span>
           </div>
-
-          <Link
-            href="/manager"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-800 text-neutral-300 text-xs font-medium"
-          >
-            <ClipboardCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Station Desk</span>
-          </Link>
         </header>
 
         {/* Child Pages */}

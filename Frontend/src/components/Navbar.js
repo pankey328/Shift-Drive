@@ -81,7 +81,7 @@ export default function Navbar() {
           >
             How It Works
           </Link>
-          {isAuth && (
+          {isAuth && user?.role === "CUSTOMER" && (
             <Link
               href="/trips"
               className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors"
@@ -105,8 +105,8 @@ export default function Navbar() {
                 <span>₹{parseFloat(user?.wallet_balance || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
               </Link>
 
-              {/* KYC Status Pill if unverified */}
-              {user?.kyc_status !== "VERIFIED" && (
+              {/* KYC Status Pill if unverified (Customer Only) */}
+              {user?.role === "CUSTOMER" && user?.kyc_status !== "VERIFIED" && (
                 <Link
                   href="/kyc"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors"
@@ -160,32 +160,74 @@ export default function Navbar() {
                       </span>
                     </div>
 
-                    <Link
-                      href="/trips"
-                      onClick={() => setDropdownOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800/60 transition-colors"
-                    >
-                      <Calendar className="w-4 h-4 text-neutral-400" />
-                      My Bookings
-                    </Link>
+                    {user?.role === "CUSTOMER" ? (
+                      <>
+                        <Link
+                          href="/trips"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800/60 transition-colors"
+                        >
+                          <Calendar className="w-4 h-4 text-neutral-400" />
+                          My Bookings
+                        </Link>
 
-                    <Link
-                      href="/wallet"
-                      onClick={() => setDropdownOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800/60 transition-colors"
-                    >
-                      <Wallet className="w-4 h-4 text-neutral-400" />
-                      Wallet & Transactions
-                    </Link>
+                        <Link
+                          href="/wallet"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800/60 transition-colors"
+                        >
+                          <Wallet className="w-4 h-4 text-neutral-400" />
+                          Wallet & Transactions
+                        </Link>
 
-                    <Link
-                      href="/kyc"
-                      onClick={() => setDropdownOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800/60 transition-colors"
-                    >
-                      <ShieldAlert className="w-4 h-4 text-neutral-400" />
-                      KYC License Status
-                    </Link>
+                        <Link
+                          href="/kyc"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800/60 transition-colors"
+                        >
+                          <ShieldAlert className="w-4 h-4 text-neutral-400" />
+                          KYC License Status
+                        </Link>
+                      </>
+                    ) : user?.role === "SUPERADMIN" ? (
+                      <>
+                        <Link
+                          href="/admin"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-purple-300 hover:text-white hover:bg-purple-950/30 transition-colors"
+                        >
+                          <Gauge className="w-4 h-4 text-purple-400" />
+                          Superadmin HQ
+                        </Link>
+                        <Link
+                          href="/admin/bookings"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800/60 transition-colors"
+                        >
+                          <Calendar className="w-4 h-4 text-neutral-400" />
+                          Bookings Ledger
+                        </Link>
+                      </>
+                    ) : (
+                      <>
+                        <Link
+                          href="/manager"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-blue-300 hover:text-white hover:bg-blue-950/30 transition-colors"
+                        >
+                          <Building2 className="w-4 h-4 text-blue-400" />
+                          Station Dispatch Desk
+                        </Link>
+                        <Link
+                          href="/manager/fleet"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800/60 transition-colors"
+                        >
+                          <Car className="w-4 h-4 text-neutral-400" />
+                          Station Fleet
+                        </Link>
+                      </>
+                    )}
 
                     <Link
                       href="/reset-password"
@@ -275,13 +317,23 @@ export default function Navbar() {
               >
                 Wallet (₹{user?.wallet_balance || 0})
               </Link>
-              <Link
-                href="/trips"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block text-sm text-neutral-300 hover:text-emerald-400"
-              >
-                My Bookings
-              </Link>
+              {user?.role === "CUSTOMER" ? (
+                <Link
+                  href="/trips"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block text-sm text-neutral-300 hover:text-emerald-400"
+                >
+                  My Bookings
+                </Link>
+              ) : (
+                <Link
+                  href={user?.role === "SUPERADMIN" ? "/admin" : "/manager"}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block text-sm text-purple-400 hover:text-purple-300 font-semibold"
+                >
+                  {user?.role === "SUPERADMIN" ? "Superadmin HQ" : "Station Action Desk"}
+                </Link>
+              )}
               <button
                 type="button"
                 onClick={handleLogout}

@@ -3,6 +3,7 @@ const {
   getInspectionsByBooking,
   findInspectionsByManager,
   findAllInspections,
+  findBookingAuditInspections,
 } = require("../repositories/inspectionRepository");
 const {
   findBookingById,
@@ -189,12 +190,9 @@ const fetchManagerInspections = async (managerId) => {
   };
 };
 
-const fetchAllInspections = async ({ damageOnly, severity }) => {
-  const whereClause = {};
-  if (damageOnly === "true") whereClause.damage_flagged = true;
-  if (severity) whereClause.damage_severity = severity.toUpperCase();
-
-  const inspections = await findAllInspections(whereClause);
+const fetchAllInspections = async (filters = {}) => {
+  const result = await findAllInspections(filters);
+  const inspections = result.inspections || [];
 
   let totalFines = 0;
   const formattedData = inspections.map((insp) => {
@@ -228,7 +226,9 @@ const fetchAllInspections = async ({ damageOnly, severity }) => {
             start_time: insp.Booking.start_time,
             end_time: insp.Booking.end_time,
             status: insp.Booking.status,
+            total_price: insp.Booking.total_price,
             vehicle: insp.Booking.Vehicle,
+            customer: insp.Booking.Customer,
           }
         : null,
     };
@@ -236,11 +236,33 @@ const fetchAllInspections = async ({ damageOnly, severity }) => {
 
   return {
     summary: {
-      total_inspections: inspections.length,
+      total_inspections: result.totalItems,
       damages_flagged: inspections.filter((i) => i.damage_flagged).length,
       total_penalties_fined: totalFines,
     },
     data: formattedData,
+    pagination: {
+      totalItems: result.totalItems,
+      totalPages: result.totalPages,
+      currentPage: result.currentPage,
+      limit: result.limit,
+    },
+  };
+};
+
+const getBookingComparisonAudit = async (bookingId) => {
+  const inspections = await findBookingAuditInspections(bookingId);
+  const booking = await findBookingById(bookingId);
+
+  const preTrip = inspections.find((i) => i.type === "PRE_TRIP") || null;
+  const postTrip = inspections.find((i) => i.type === "POST_TRIP") || null;
+
+  return {
+    booking,
+    inspections,
+    preTrip,
+    postTrip,
+    hasDamageDiscrepancy: Boolean(postTrip?.damage_flagged && !preTrip?.damage_flagged),
   };
 };
 
@@ -249,5 +271,6 @@ module.exports = {
   getBookingInspections,
   fetchManagerInspections,
   fetchAllInspections,
+  getBookingComparisonAudit,
 };
 

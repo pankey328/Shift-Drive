@@ -22,11 +22,9 @@ router.get("/:id", getVehicleById);
 
 router.use(protect);
 
-
-
 router.get("/admin/hub/:hubId", authorize("HUB_ADMIN", "SUPERADMIN"), getHubFleetDetails);
-router.post("/", authorize("HUB_ADMIN", "SUPERADMIN"), addVehicle);
-router.post("/:id/images", authorize("HUB_ADMIN", "SUPERADMIN"), upload.array("images", 5), uploadGallery);
+router.post("/", authorize("SUPERADMIN"), addVehicle);
+router.post("/:id/images", authorize("SUPERADMIN"), upload.array("images", 5), uploadGallery);
 router.patch("/:id/status", authorize("HUB_ADMIN", "SUPERADMIN"), handleUpdateStatus);
 router.patch("/:id/transfer", authorize("SUPERADMIN"), handleTransferHub);
 router.put("/:id", authorize("SUPERADMIN"), handleUpdateVehicle);

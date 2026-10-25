@@ -1,15 +1,26 @@
 // Utility for extracting time and comparing hub operational hours
 
 const getTimeString = (input) => {
-  if (typeof input === "string") {
-    const match = input.match(/[T\s](\d{2}:\d{2}(?::\d{2})?)/);
-    if (match) {
-      return match[1].length === 5 ? `${match[1]}:00` : match[1];
-    }
-  }
+  if (!input) return "00:00:00";
   const d = new Date(input);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  if (isNaN(d.getTime())) {
+    if (typeof input === "string") {
+      const match = input.match(/[T\s](\d{2}:\d{2}(?::\d{2})?)/);
+      if (match) {
+        return match[1].length === 5 ? `${match[1]}:00` : match[1];
+      }
+    }
+    return "00:00:00";
+  }
+
+  // Format in Indian Standard Time (Asia/Kolkata, UTC+5:30) because all station operating hours are in Indian local time
+  return d.toLocaleTimeString("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 };
 
 const isWithinOperatingHours = (timeStr, open, close) => {

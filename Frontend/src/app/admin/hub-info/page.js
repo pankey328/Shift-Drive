@@ -30,6 +30,7 @@ import {
   Calendar,
   IndianRupee,
   Compass,
+  Edit3,
 } from "lucide-react";
 
 function HubInfoContent() {
@@ -57,6 +58,18 @@ function HubInfoContent() {
   const [assigning, setAssigning] = useState(false);
   const [assignError, setAssignError] = useState("");
   const [assignSuccess, setAssignSuccess] = useState("");
+
+  // Edit Hub Manager Modal
+  const [editingManager, setEditingManager] = useState(null);
+  const [editManagerForm, setEditManagerForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    password: "",
+  });
+  const [savingManager, setSavingManager] = useState(false);
+  const [editManagerError, setEditManagerError] = useState("");
+  const [editManagerSuccess, setEditManagerSuccess] = useState("");
 
   // Load all hubs & managers
   const fetchHubs = useCallback(async () => {
@@ -154,6 +167,57 @@ function HubInfoContent() {
       setAssignError(err.response?.data?.message || "Failed to assign station manager.");
     } finally {
       setAssigning(false);
+    }
+  };
+
+  // Open Edit Manager Profile Modal
+  const handleOpenEditManager = (manager) => {
+    if (!manager) return;
+    setEditingManager(manager);
+    setEditManagerForm({
+      name: manager.name || "",
+      email: manager.email || "",
+      phone: manager.phone || "",
+      password: "",
+    });
+    setEditManagerError("");
+    setEditManagerSuccess("");
+  };
+
+  // Save Edit Manager Profile
+  const handleSaveManager = async (e) => {
+    e.preventDefault();
+    if (!editingManager) return;
+    setSavingManager(true);
+    setEditManagerError("");
+    setEditManagerSuccess("");
+
+    try {
+      const payload = {
+        name: editManagerForm.name.trim(),
+        email: editManagerForm.email.trim().toLowerCase(),
+        phone: editManagerForm.phone ? editManagerForm.phone.trim() : null,
+      };
+      if (editManagerForm.password && editManagerForm.password.trim()) {
+        payload.password = editManagerForm.password.trim();
+      }
+
+      const res = await api.put(`/admin/users/${editingManager.userId}`, payload);
+      if (res.data?.success) {
+        setEditManagerSuccess("Manager details updated successfully!");
+        setTimeout(() => {
+          setEditingManager(null);
+          setEditManagerSuccess("");
+          fetchHubs();
+          if (selectedHubId) {
+            fetchHubDetails(selectedHubId);
+          }
+        }, 1200);
+      }
+    } catch (err) {
+      setEditManagerError(err.response?.data?.message || "Failed to update manager details.");
+    } finally {
+      setSavingManager(false);
     }
   };
 
@@ -377,6 +441,18 @@ function HubInfoContent() {
 
               {/* Quick Actions */}
               <div className="flex flex-wrap lg:flex-col gap-2.5 justify-end">
+                {activeHub.Manager && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditManager(activeHub.Manager)}
+                    className="px-4 py-2.5 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/60 text-purple-300 font-bold text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-sm"
+                    title="Edit Hub Manager Profile & Credentials"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Edit Manager Info</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
@@ -1097,6 +1173,112 @@ function HubInfoContent() {
               >
                 {assigning ? "Updating Assignment..." : "Save Manager Assignment"}
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT HUB MANAGER PROFILE MODAL */}
+      {editingManager && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-md w-full rounded-3xl bg-neutral-900 border border-neutral-800 p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Edit3 className="w-4 h-4 text-purple-400" />
+                  Edit Station Manager Profile
+                </h3>
+                <p className="text-[11px] text-neutral-400">
+                  Modify contact details or reset password for {activeHub.name} manager.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingManager(null)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveManager} className="space-y-3.5 text-xs">
+              <div className="space-y-1">
+                <label className="text-neutral-300 font-semibold">Manager Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editManagerForm.name}
+                  onChange={(e) => setEditManagerForm({ ...editManagerForm, name: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-neutral-300 font-semibold">Email Address *</label>
+                <input
+                  type="email"
+                  required
+                  value={editManagerForm.email}
+                  onChange={(e) => setEditManagerForm({ ...editManagerForm, email: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-neutral-300 font-semibold">Phone Number</label>
+                <input
+                  type="tel"
+                  value={editManagerForm.phone}
+                  onChange={(e) => setEditManagerForm({ ...editManagerForm, phone: e.target.value })}
+                  placeholder="+91 9876543210"
+                  className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-neutral-300 font-semibold">
+                  New Password <span className="text-neutral-500 font-normal">(Optional)</span>
+                </label>
+                <input
+                  type="password"
+                  value={editManagerForm.password}
+                  onChange={(e) => setEditManagerForm({ ...editManagerForm, password: e.target.value })}
+                  placeholder="Leave empty to keep existing password"
+                  className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              {editManagerSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800 text-xs text-emerald-400 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{editManagerSuccess}</span>
+                </div>
+              )}
+
+              {editManagerError && (
+                <div className="p-3 rounded-xl bg-red-950/40 border border-red-800 text-xs text-red-400 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{editManagerError}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingManager(null)}
+                  className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingManager}
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/20 cursor-pointer flex items-center gap-2"
+                >
+                  {savingManager && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{savingManager ? "Saving Changes..." : "Save Manager Profile"}</span>
+                </button>
+              </div>
             </form>
           </div>
         </div>

@@ -29,8 +29,8 @@ const addNewVehicle = async ({
   });
 };
 
-const getHubFleet = async (hubId) => {
-  return await vehicleRepository.getVehiclesByHub(hubId);
+const getHubFleet = async (hubId, filters = {}) => {
+  return await vehicleRepository.getVehiclesByHub(hubId, filters);
 };
 
 const uploadGalleryImages = async (vehicleId, files) => {
@@ -131,6 +131,33 @@ const updateVehicleInfo = async (vehicleId, updateData) => {
     const error = new Error("Vehicle not found.");
     error.statusCode = 404;
     throw error;
+  }
+
+  // If plate_number is provided and changed, validate uniqueness
+  if (updateData.plate_number) {
+    const trimmedPlate = updateData.plate_number.trim().toUpperCase();
+    if (!trimmedPlate) {
+      const error = new Error("Plate number cannot be empty.");
+      error.statusCode = 400;
+      throw error;
+    }
+    updateData.plate_number = trimmedPlate;
+
+    if (trimmedPlate !== vehicle.plate_number.toUpperCase()) {
+      const Vehicle = require("../models/Vehicle");
+      const { Op } = require("sequelize");
+      const existing = await Vehicle.findOne({
+        where: {
+          plate_number: trimmedPlate,
+          vehicleId: { [Op.ne]: vehicleId },
+        },
+      });
+      if (existing) {
+        const error = new Error(`License plate "${trimmedPlate}" is already registered to another vehicle (${existing.make} ${existing.model}).`);
+        error.statusCode = 400;
+        throw error;
+      }
+    }
   }
 
   return await vehicleRepository.updateVehicleRecord(vehicleId, updateData);

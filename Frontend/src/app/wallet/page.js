@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import Link from "next/link";
 import api from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useDispatch } from "react-redux";
 import { updateUser } from "@/redux/slices/authSlice";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import Pagination from "@/components/Pagination";
 import {
   Wallet,
   ShieldCheck,
@@ -42,17 +43,36 @@ function WalletContent() {
   // Ledger Filter: 'ALL', 'CREDIT', 'DEBIT'
   const [ledgerFilter, setLedgerFilter] = useState("ALL");
 
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    totalItems: 0,
+    totalPages: 1,
+    currentPage: 1,
+    limit: 10,
+  });
+
   // Fetch Wallet Data
-  const fetchWalletData = async () => {
+  const fetchWalletData = useCallback(async () => {
     try {
       setLoadingData(true);
       const [historyRes, meRes] = await Promise.all([
-        api.get("/wallet/history"),
+        api.get("/wallet/history", {
+          params: {
+            type: ledgerFilter !== "ALL" ? ledgerFilter : undefined,
+            page,
+            limit,
+          },
+        }),
         api.get("/auth/me"),
       ]);
 
       if (historyRes.data?.data) {
         setTransactions(historyRes.data.data);
+      }
+      if (historyRes.data?.pagination) {
+        setPagination(historyRes.data.pagination);
       }
       if (meRes.data?.user) {
         dispatch(updateUser(meRes.data.user));
@@ -63,13 +83,13 @@ function WalletContent() {
     } finally {
       setLoadingData(false);
     }
-  };
+  }, [ledgerFilter, page, limit, dispatch]);
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchWalletData();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchWalletData]);
 
   // Sync wallet balance from user state
   useEffect(() => {
@@ -109,15 +129,8 @@ function WalletContent() {
     }
   };
 
-  // Filter Transactions
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      const isCredit = parseFloat(tx.amount) > 0;
-      if (ledgerFilter === "CREDIT") return isCredit;
-      if (ledgerFilter === "DEBIT") return !isCredit;
-      return true;
-    });
-  }, [transactions, ledgerFilter]);
+  // Filtered Transactions (handled server-side with pagination)
+  const filteredTransactions = transactions;
 
   return (
     <div className="relative min-h-screen bg-neutral-950 text-white font-sans pb-24">
@@ -306,7 +319,10 @@ function WalletContent() {
                     <button
                       key={tab}
                       type="button"
-                      onClick={() => setLedgerFilter(tab)}
+                      onClick={() => {
+                        setLedgerFilter(tab);
+                        setPage(1);
+                      }}
                       className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
                         ledgerFilter === tab
                           ? "bg-white text-black shadow-sm"
@@ -393,6 +409,23 @@ function WalletContent() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {!loadingData && pagination.totalItems > 0 && (
+                <div className="pt-2">
+                  <Pagination
+                    currentPage={pagination.currentPage}
+                    totalPages={pagination.totalPages}
+                    totalItems={pagination.totalItems}
+                    limit={limit}
+                    onPageChange={(newPage) => setPage(newPage)}
+                    onLimitChange={(newLimit) => {
+                      setLimit(newLimit);
+                      setPage(1);
+                    }}
+                    pageSizeOptions={[5, 10, 20, 50]}
+                  />
                 </div>
               )}
             </div>

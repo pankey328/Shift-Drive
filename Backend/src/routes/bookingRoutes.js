@@ -22,13 +22,13 @@ router.get("/admin/all", authorize("SUPERADMIN"), listAllBookings);
 router.patch("/admin/:bookingId/resolve-emergency", authorize("SUPERADMIN"), resolveEmergency);
 router.patch("/admin/:bookingId/force-cancel", authorize("SUPERADMIN"), forceCancel);
 
-// Customer booking flows
-router.get("/my-bookings", getUserBookings);
+// Customer booking flows (Strictly CUSTOMER role)
+router.get("/my-bookings", authorize("CUSTOMER"), getUserBookings);
 router.get("/:bookingId", getBookingDetails);
-router.post("/initiate", createBooking);
-router.post("/:bookingId/pay", payForBooking);
-router.post("/:bookingId/cancel", cancelBooking);
-router.post("/:bookingId/emergency", reportEmergency);
+router.post("/initiate", authorize("CUSTOMER"), createBooking);
+router.post("/:bookingId/pay", authorize("CUSTOMER"), payForBooking);
+router.post("/:bookingId/cancel", authorize("CUSTOMER"), cancelBooking);
+router.post("/:bookingId/emergency", authorize("CUSTOMER"), reportEmergency);
 
 module.exports = router;
 
