@@ -14,9 +14,11 @@ import {
   Upload,
   Search,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 export default function ManagerLostFoundPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const searchParams = useSearchParams();
 
   const [mounted, setMounted] = useState(false);
   const [currentHub, setCurrentHub] = useState(null);
@@ -74,16 +76,22 @@ export default function ManagerLostFoundPage() {
       if (res.data?.success) {
         const hubs = res.data.data || [];
         let target = null;
-        if (user?.role === "HUB_ADMIN") {
-          const userIdentifier = user?.userId || user?.id;
-          const userEmail = user?.email?.toLowerCase().trim();
-          target = hubs.find((h) => {
-            const idMatch = userIdentifier && (h.manager_id === userIdentifier || h.Manager?.userId === userIdentifier);
-            const emailMatch = userEmail && h.Manager?.email?.toLowerCase().trim() === userEmail;
-            return idMatch || emailMatch;
-          }) || hubs[0];
-        } else {
-          target = hubs[0];
+        const requestedId = user?.role === "SUPERADMIN" ? searchParams?.get("hubId") : null;
+        if (requestedId) {
+          target = hubs.find((h) => h.hubId === requestedId);
+        }
+        if (!target) {
+          if (user?.role === "HUB_ADMIN") {
+            const userIdentifier = user?.userId || user?.id;
+            const userEmail = user?.email?.toLowerCase().trim();
+            target = hubs.find((h) => {
+              const idMatch = userIdentifier && (h.manager_id === userIdentifier || h.Manager?.userId === userIdentifier);
+              const emailMatch = userEmail && h.Manager?.email?.toLowerCase().trim() === userEmail;
+              return idMatch || emailMatch;
+            }) || hubs[0];
+          } else {
+            target = hubs[0];
+          }
         }
 
         if (target) {
@@ -94,7 +102,7 @@ export default function ManagerLostFoundPage() {
     } catch (err) {
       console.error("Failed to load hubs:", err);
     }
-  }, [user]);
+  }, [user, searchParams]);
 
   // Fetch Lost Items with search, filters, and pagination
   const fetchLostItems = useCallback(async () => {
@@ -134,6 +142,17 @@ export default function ManagerLostFoundPage() {
       fetchLostItems();
     }
   }, [selectedHubId, fetchLostItems]);
+
+  useEffect(() => {
+    const handleSuperadminHubChange = (e) => {
+      if (e.detail) {
+        setSelectedHubId(e.detail);
+        resolveStationHub();
+      }
+    };
+    window.addEventListener("superadmin-hub-change", handleSuperadminHubChange);
+    return () => window.removeEventListener("superadmin-hub-change", handleSuperadminHubChange);
+  }, [resolveStationHub]);
 
   const handleLostSubmit = async (e) => {
     e.preventDefault();

@@ -34,6 +34,40 @@ import {
   Eye,
 } from "lucide-react";
 
+// Live Hold Countdown Timer for Pending Payment reservations
+function HoldCountdownTimer({ lockedUntil, onExpire }) {
+  const calculateRemaining = useCallback(() => {
+    if (!lockedUntil) return 0;
+    const expiry = new Date(lockedUntil).getTime();
+    return Math.max(0, Math.floor((expiry - Date.now()) / 1000));
+  }, [lockedUntil]);
+
+  const [seconds, setSeconds] = useState(calculateRemaining);
+
+  useEffect(() => {
+    setSeconds(calculateRemaining());
+
+    const interval = setInterval(() => {
+      const remaining = calculateRemaining();
+      setSeconds(remaining);
+      if (remaining <= 0) {
+        clearInterval(interval);
+        if (onExpire) onExpire();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [calculateRemaining, onExpire]);
+
+  if (seconds <= 0) {
+    return <span className="font-mono text-red-400 font-bold">00:00</span>;
+  }
+
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
 function TripsDashboardContent() {
   const router = useRouter();
   const dispatch = useDispatch();
@@ -218,7 +252,7 @@ function TripsDashboardContent() {
   const filteredBookings = bookings;
 
   // Status Badge Helper
-  const renderStatusBadge = (status) => {
+  const renderStatusBadge = (status, lockedUntil = null, endTime = null) => {
     switch (status) {
       case "CONFIRMED":
         return (
@@ -227,13 +261,23 @@ function TripsDashboardContent() {
             Upcoming
           </span>
         );
-      case "ACTIVE_TRIP":
+      case "ACTIVE_TRIP": {
+        const isLate = endTime && new Date(endTime).getTime() < Date.now();
+        if (isLate) {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-950/80 border border-red-500 text-red-300 text-xs font-bold animate-pulse shadow-sm shadow-red-950/60">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+              Overdue (Late Penalty Active)
+            </span>
+          );
+        }
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-bold">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping"></span>
             On Road
           </span>
         );
+      }
       case "EMERGENCY_HOLD":
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-950/60 border border-red-600/60 text-red-400 text-xs font-bold animate-pulse">
@@ -257,9 +301,14 @@ function TripsDashboardContent() {
         );
       case "PENDING_PAYMENT":
         return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-950/40 border border-amber-800/40 text-amber-400 text-xs font-semibold">
-            <Clock className="w-3.5 h-3.5" />
-            Pending Payment
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/60 border border-amber-600/60 text-amber-400 text-xs font-bold shadow-sm shadow-amber-950/40">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+            <span>Hold Active</span>
+            {lockedUntil && (
+              <span className="font-mono text-amber-300 font-semibold ml-0.5">
+                (<HoldCountdownTimer lockedUntil={lockedUntil} onExpire={fetchBookings} />)
+              </span>
+            )}
           </span>
         );
       default:
@@ -438,27 +487,45 @@ function TripsDashboardContent() {
                 const canCancel = trip.status === "CONFIRMED";
                 const isActiveTrip = trip.status === "ACTIVE_TRIP";
                 const isEmergencyHold = trip.status === "EMERGENCY_HOLD";
+                const isPendingPayment = trip.status === "PENDING_PAYMENT";
+                const isOverdue = isActiveTrip && trip.end_time && new Date(trip.end_time).getTime() < Date.now();
 
                 return (
                   <div
                     key={trip.bookingId}
-                    className={`rounded-3xl border transition-all p-5 sm:p-6 space-y-4 ${isEmergencyHold
-                        ? "bg-red-950/20 border-red-800/60 shadow-[0_0_20px_rgba(239,68,68,0.15)]"
-                        : "bg-neutral-900/60 border-neutral-800/80 hover:border-neutral-700"
-                      }`}
+                    className={`rounded-3xl border transition-all p-5 sm:p-6 space-y-4 ${
+                      isOverdue
+                        ? "bg-red-950/25 border-red-700/60 shadow-[0_0_25px_rgba(239,68,68,0.2)]"
+                        : isEmergencyHold
+                          ? "bg-red-950/20 border-red-800/60 shadow-[0_0_20px_rgba(239,68,68,0.15)]"
+                          : isPendingPayment
+                            ? "bg-amber-950/15 border-amber-800/50 hover:border-amber-700/60"
+                            : "bg-neutral-900/60 border-neutral-800/80 hover:border-neutral-700"
+                    }`}
                   >
                     {/* Top Header of Card */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800/80 pb-4">
-                      <div className="flex items-center gap-3">
-                        {renderStatusBadge(trip.status)}
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        {renderStatusBadge(trip.status, trip.locked_until, trip.end_time)}
                         <span className="text-xs font-mono text-neutral-400">
                           Ref: <strong className="text-neutral-200">{trip.bookingId.slice(0, 8)}</strong>
                         </span>
+                        {trip.status === "CONFIRMED" && (
+                          user?.kyc_status === "VERIFIED" ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold flex items-center gap-1">
+                              <ShieldCheck className="w-3 h-3" /> DL Pre-Verified
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[10px] font-bold flex items-center gap-1">
+                              <FileText className="w-3 h-3" /> Show Original DL at Pickup
+                            </span>
+                          )
+                        )}
                       </div>
 
                       <div className="text-xs text-neutral-400">
-                        Total Paid:{" "}
-                        <strong className="text-emerald-400 font-bold font-mono text-sm">
+                        {isPendingPayment ? "Amount Due: " : "Total Paid: "}
+                        <strong className={isPendingPayment ? "text-amber-400 font-bold font-mono text-sm" : "text-emerald-400 font-bold font-mono text-sm"}>
                           ₹{parseFloat(trip.total_price || 0).toLocaleString("en-IN")}
                         </strong>
                       </div>
@@ -537,14 +604,27 @@ function TripsDashboardContent() {
 
                       {/* Card Actions */}
                       <div className="md:col-span-3 flex flex-wrap md:flex-col justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenReceipt(trip)}
-                          className="flex-1 md:flex-initial py-2 px-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-semibold text-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <FileText className="w-3.5 h-3.5 text-neutral-400" />
-                          <span>View Voucher</span>
-                        </button>
+                        {isPendingPayment ? (
+                          <Link
+                            href={`/checkout?vehicleId=${trip.vehicle_id || car.vehicleId}&pickupHubId=${trip.pickup_hub_id}&dropoffHubId=${trip.dropoff_hub_id || trip.pickup_hub_id}&startTime=${encodeURIComponent(trip.start_time)}&endTime=${encodeURIComponent(trip.end_time)}`}
+                            className="flex-1 md:flex-initial py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>Complete Payment</span>
+                            <span className="font-mono text-[11px] bg-black/20 px-1.5 py-0.5 rounded font-extrabold text-black">
+                              <HoldCountdownTimer lockedUntil={trip.locked_until} onExpire={fetchBookings} />
+                            </span>
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenReceipt(trip)}
+                            className="flex-1 md:flex-initial py-2 px-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-semibold text-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-neutral-400" />
+                            <span>View Voucher</span>
+                          </button>
+                        )}
 
                         {/* Self Cancellation (Upcoming) */}
                         {canCancel && (
@@ -580,6 +660,76 @@ function TripsDashboardContent() {
                         )}
                       </div>
                     </div>
+
+                    {/* Pending Payment Hold Banner */}
+                    {isPendingPayment && (
+                      <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-300">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center flex-shrink-0 text-amber-400">
+                            <Clock className="w-4 h-4 animate-pulse" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 font-bold text-white text-sm">
+                              <span>Temporary Vehicle Hold Active</span>
+                              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-xs">
+                                <HoldCountdownTimer lockedUntil={trip.locked_until} onExpire={fetchBookings} /> remaining
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-amber-300/80 block mt-0.5">
+                              This vehicle is temporarily held for your session. Complete payment before the timer expires to confirm your reservation.
+                            </span>
+                          </div>
+                        </div>
+                        <Link
+                          href={`/checkout?vehicleId=${trip.vehicle_id || car.vehicleId}&pickupHubId=${trip.pickup_hub_id}&dropoffHubId=${trip.dropoff_hub_id || trip.pickup_hub_id}&startTime=${encodeURIComponent(trip.start_time)}&endTime=${encodeURIComponent(trip.end_time)}`}
+                          className="self-end sm:self-auto px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs whitespace-nowrap transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5"
+                        >
+                          <span>Resume & Pay</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+                    )}
+
+                    {/* Overdue Return Penalty Banner */}
+                    {isOverdue && (
+                      <div className="p-3.5 rounded-2xl bg-red-950/50 border border-red-600/70 flex items-start gap-3 text-xs text-red-300">
+                        <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 animate-bounce mt-0.5" />
+                        <div>
+                          <strong className="text-white block text-sm">Overdue Return Warning</strong>
+                          <p className="text-[11px] text-red-200/90 mt-0.5 leading-relaxed">
+                            Scheduled return was {trip.end_time ? new Date(trip.end_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) : "passed"}. In accordance with ShiftDrive policies, a late penalty of ₹1,000/hour is actively assessed against your wallet. Please return the vehicle to {dropoffHub.name || pickupHub.name || "the station"} immediately or contact station support.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fleet Swap / Reassignment Banner */}
+                    {trip.incident_notes && trip.incident_notes.includes("Fleet Swap") && (
+                      <div className="p-3 rounded-2xl bg-blue-950/40 border border-blue-700/50 flex items-start gap-2.5 text-xs text-blue-300">
+                        <Sparkles className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-white block">Vehicle Seamlessly Reassigned</span>
+                          <span className="text-[11px] text-blue-200/80 block mt-0.5">{trip.incident_notes}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cancellation & Apology Credit Notice */}
+                    {trip.status === "CANCELLED" && trip.cancellation_reason && (
+                      <div className="p-3.5 rounded-2xl bg-neutral-950/70 border border-neutral-800 flex items-start gap-3 text-xs">
+                        <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <span className="font-semibold text-white block">Cancellation Notice</span>
+                          <p className="text-[11px] text-neutral-400 leading-relaxed">{trip.cancellation_reason}</p>
+                          {trip.cancellation_reason.includes("Apology Credit") && (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold mt-1">
+                              <Sparkles className="w-3 h-3" />
+                              <span>₹1,000 Inconvenience Credit Credited to Wallet</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Emergency Hold Banner */}
                     {isEmergencyHold && (

@@ -35,10 +35,14 @@ import {
   TrendingUp,
   Zap,
   Sparkles,
+  Eye,
+  ZoomIn,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 export default function ManagerFleetPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const searchParams = useSearchParams();
 
   const [mounted, setMounted] = useState(false);
   const [currentHub, setCurrentHub] = useState(null);
@@ -48,6 +52,7 @@ export default function ManagerFleetPage() {
   const [fleetFilter, setFleetFilter] = useState("ALL");
   const [allHubsList, setAllHubsList] = useState([]);
   const [updatingVehicleId, setUpdatingVehicleId] = useState(null);
+  const [selectedDlPreview, setSelectedDlPreview] = useState(null);
 
   // Pagination, Sorting & Backend Filtering
   const [currentPage, setCurrentPage] = useState(1);
@@ -144,16 +149,22 @@ export default function ManagerFleetPage() {
         setAllHubsList(hubs);
 
         let target = null;
-        if (user?.role === "HUB_ADMIN") {
-          const userIdentifier = user?.userId || user?.id;
-          const userEmail = user?.email?.toLowerCase().trim();
-          target = hubs.find((h) => {
-            const idMatch = userIdentifier && (h.manager_id === userIdentifier || h.Manager?.userId === userIdentifier);
-            const emailMatch = userEmail && h.Manager?.email?.toLowerCase().trim() === userEmail;
-            return idMatch || emailMatch;
-          }) || hubs[0];
-        } else {
-          target = hubs[0];
+        const requestedId = user?.role === "SUPERADMIN" ? searchParams?.get("hubId") : null;
+        if (requestedId) {
+          target = hubs.find((h) => h.hubId === requestedId);
+        }
+        if (!target) {
+          if (user?.role === "HUB_ADMIN") {
+            const userIdentifier = user?.userId || user?.id;
+            const userEmail = user?.email?.toLowerCase().trim();
+            target = hubs.find((h) => {
+              const idMatch = userIdentifier && (h.manager_id === userIdentifier || h.Manager?.userId === userIdentifier);
+              const emailMatch = userEmail && h.Manager?.email?.toLowerCase().trim() === userEmail;
+              return idMatch || emailMatch;
+            }) || hubs[0];
+          } else {
+            target = hubs[0];
+          }
         }
 
         if (target) {
@@ -164,7 +175,7 @@ export default function ManagerFleetPage() {
     } catch (err) {
       console.error("Failed to load hubs:", err);
     }
-  }, [user]);
+  }, [user, searchParams]);
 
   // Fetch Station Fleet Vehicles with Backend Searching, Sorting, Filtering & Pagination
   const fetchStationFleet = useCallback(async () => {
@@ -1140,11 +1151,55 @@ export default function ManagerFleetPage() {
                       </a>
                     </div>
                     {selectedTripDossier.trip.Customer?.kyc_document_url && (
-                      <div className="flex items-center justify-between pt-1 border-t border-neutral-800 text-[11px]">
-                        <span className="text-neutral-400">Driving License / Doc</span>
-                        <span className="font-mono text-emerald-400 font-medium">
-                          {selectedTripDossier.trip.Customer?.kyc_document_url}
-                        </span>
+                      <div className="pt-2 border-t border-neutral-800 space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-400 font-semibold flex items-center gap-1.5">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Driving License Proof</span>
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            {selectedTripDossier.trip.Customer?.kyc_status || "VERIFIED"}
+                          </span>
+                        </div>
+
+                        {selectedTripDossier.trip.Customer.kyc_document_url.startsWith("http") ||
+                        selectedTripDossier.trip.Customer.kyc_document_url.startsWith("/") ? (
+                          <div className="flex items-center gap-3 p-2.5 rounded-xl bg-neutral-900 border border-neutral-800">
+                            <div
+                              onClick={() => setSelectedDlPreview(selectedTripDossier.trip.Customer.kyc_document_url)}
+                              className="relative w-16 h-12 rounded-lg overflow-hidden bg-neutral-950 border border-neutral-800 flex-shrink-0 cursor-pointer group"
+                              title="Click to view full DL proof"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={selectedTripDossier.trip.Customer.kyc_document_url}
+                                alt="Customer Driving License"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <ZoomIn className="w-4 h-4 text-white" />
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-xs font-bold text-white block">Government DL Photo</span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedDlPreview(selectedTripDossier.trip.Customer.kyc_document_url)}
+                                className="text-[11px] text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 mt-0.5 cursor-pointer"
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>Inspect Full DL Document</span>
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-between">
+                            <span className="text-xs font-mono font-bold text-emerald-400">
+                              {selectedTripDossier.trip.Customer.kyc_document_url.replace(/^DL#\s*/i, "DL-")}
+                            </span>
+                            <span className="text-[10px] text-neutral-400">Government Record Verified</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1451,6 +1506,24 @@ export default function ManagerFleetPage() {
                 Close Gallery
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full-Screen DL Image Preview Lightbox */}
+      {selectedDlPreview && (
+        <div
+          onClick={() => setSelectedDlPreview(null)}
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div className="relative max-w-3xl w-full max-h-[85vh] flex flex-col items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={selectedDlPreview}
+              alt="Driving license proof zoom"
+              className="max-w-full max-h-[80vh] rounded-2xl object-contain border border-neutral-800 shadow-2xl"
+            />
+            <p className="text-xs text-neutral-400 mt-3">Click anywhere to close preview</p>
           </div>
         </div>
       )}

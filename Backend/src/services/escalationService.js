@@ -111,11 +111,14 @@ const handleLateReturnEscalation = async (lateBooking) => {
     }
 
     nextBooking.vehicle_id = repCarId;
+    nextBooking.incident_notes = `Seamless Fleet Swap (${swapType}): Reassigned to ${replacementCar.make} ${replacementCar.model} (${replacementCar.plate_number}) due to return delay on original vehicle.`;
     await nextBooking.save();
   } else {
     // Cancel & Full Refund + ₹1000 Apology Credit
     console.log(`No replacement found. Cancelling User B's booking...`);
     nextBooking.status = "CANCELLED";
+    nextBooking.cancellation_reason =
+      "Vehicle unavailable due to delayed return by previous driver. 100% refund + ₹1,000 Convenience / Apology Credit credited to your wallet.";
     await nextBooking.save();
 
     const refundTotal = parseFloat(nextBooking.total_price) + 1000;
@@ -241,6 +244,7 @@ const handleMaintenanceEscalation = async (brokenVehicleId) => {
       }
 
       nextBooking.vehicle_id = repCarId;
+      nextBooking.incident_notes = `Seamless Fleet Swap (${swapType}): Reassigned to ${replacementCar.make} ${replacementCar.model} (${replacementCar.plate_number}) due to vehicle maintenance.`;
       await nextBooking.save();
     } else {
       // Cancel & Refund
@@ -248,6 +252,8 @@ const handleMaintenanceEscalation = async (brokenVehicleId) => {
         `No replacement found. Cancelling Booking ${bookingPk}...`,
       );
       nextBooking.status = "CANCELLED";
+      nextBooking.cancellation_reason =
+        "Booking cancelled due to emergency vehicle maintenance. 100% refund + ₹1,000 Convenience / Apology Credit credited to your wallet.";
       await nextBooking.save();
 
       // Full refund + Apology credit

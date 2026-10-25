@@ -19,6 +19,7 @@ import {
   Sparkles,
   ClipboardCheck,
   ArrowRightLeft,
+  LifeBuoy,
 } from "lucide-react";
 
 export default function SuperadminLayout({ children }) {
@@ -105,6 +106,13 @@ export default function SuperadminLayout({ children }) {
       exact: false,
       icon: ArrowRightLeft,
       description: "Inter-hub deadhead dispatch",
+    },
+    {
+      label: "AI Support Desk",
+      href: "/admin/support",
+      exact: false,
+      icon: LifeBuoy,
+      description: "AI resolutions & customer tickets",
     },
   ];
 

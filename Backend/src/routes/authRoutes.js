@@ -14,6 +14,7 @@ const {
   setupPermanentPassword,
   registerHubManager,
   submitKyc,
+  updateProfile,
 } = require("../controllers/authController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 
@@ -34,6 +35,7 @@ router.post("/forget", otpLimiter, forget);
 router.post("/verify-forget", verifyForget);
 router.post("/reset", reset);
 router.get("/me", protect, getMe);
+router.put("/profile", protect, updateProfile);
 router.post("/setup-password", protect, setupPermanentPassword);
 router.post("/kyc", protect, authorize("CUSTOMER"), upload.array("documents", 2), submitKyc);
 router.post(

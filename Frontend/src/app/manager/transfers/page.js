@@ -17,8 +17,11 @@ import {
   Check,
 } from "lucide-react";
 
+import { useSearchParams } from "next/navigation";
+
 export default function ManagerTransfersPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const searchParams = useSearchParams();
 
   const [mounted, setMounted] = useState(false);
   const [currentHub, setCurrentHub] = useState(null);
@@ -74,16 +77,22 @@ export default function ManagerTransfersPage() {
         setAllHubsList(hubs);
 
         let target = null;
-        if (user?.role === "HUB_ADMIN") {
-          const userIdentifier = user?.userId || user?.id;
-          const userEmail = user?.email?.toLowerCase().trim();
-          target = hubs.find((h) => {
-            const idMatch = userIdentifier && (h.manager_id === userIdentifier || h.Manager?.userId === userIdentifier);
-            const emailMatch = userEmail && h.Manager?.email?.toLowerCase().trim() === userEmail;
-            return idMatch || emailMatch;
-          }) || hubs[0];
-        } else {
-          target = hubs[0];
+        const requestedId = user?.role === "SUPERADMIN" ? searchParams?.get("hubId") : null;
+        if (requestedId) {
+          target = hubs.find((h) => h.hubId === requestedId);
+        }
+        if (!target) {
+          if (user?.role === "HUB_ADMIN") {
+            const userIdentifier = user?.userId || user?.id;
+            const userEmail = user?.email?.toLowerCase().trim();
+            target = hubs.find((h) => {
+              const idMatch = userIdentifier && (h.manager_id === userIdentifier || h.Manager?.userId === userIdentifier);
+              const emailMatch = userEmail && h.Manager?.email?.toLowerCase().trim() === userEmail;
+              return idMatch || emailMatch;
+            }) || hubs[0];
+          } else {
+            target = hubs[0];
+          }
         }
 
         if (target) {
@@ -94,7 +103,7 @@ export default function ManagerTransfersPage() {
     } catch (err) {
       console.error("Failed to load hubs:", err);
     }
-  }, [user]);
+  }, [user, searchParams]);
 
   // Fetch Station Transfers with status & pagination
   const fetchTransfers = useCallback(async () => {
@@ -148,6 +157,18 @@ export default function ManagerTransfersPage() {
       fetchAvailableVehicles();
     }
   }, [selectedHubId, fetchTransfers, fetchAvailableVehicles]);
+
+  useEffect(() => {
+    const handleSuperadminHubChange = (e) => {
+      if (e.detail) {
+        setSelectedHubId(e.detail);
+        const match = allHubsList.find((h) => h.hubId === e.detail);
+        if (match) setCurrentHub(match);
+      }
+    };
+    window.addEventListener("superadmin-hub-change", handleSuperadminHubChange);
+    return () => window.removeEventListener("superadmin-hub-change", handleSuperadminHubChange);
+  }, [allHubsList]);
 
   const handleTransferSubmit = async (e) => {
     e.preventDefault();

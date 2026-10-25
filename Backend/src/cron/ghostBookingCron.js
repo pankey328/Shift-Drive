@@ -16,8 +16,8 @@ const startBookingCron = () => {
 
       for (const booking of ghostBookings) {
         const id = booking.bookingId || booking.id;
-        await updateBookingStatus(id, "EXPIRED");
-        console.log(`[CRON] Booking ${id} EXPIRED (Payment timeout)`);
+        await booking.destroy({ force: true });
+        console.log(`[CRON] Temporary hold booking ${id} purged from database (Payment timeout)`);
       }
     } catch (error) {
       console.error("[CRON] Error running ghost sweep:", error.message);

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import api from "@/api";
 import {
   Car,
@@ -24,6 +24,7 @@ function ManagerSidebarContent() {
   const { user, isAuthenticated, loading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [hubs, setHubs] = useState([]);
@@ -64,9 +65,13 @@ function ManagerSidebarContent() {
             setCurrentHub(assigned);
             setSelectedHubId(assigned?.hubId || "");
           } else if (user?.role === "SUPERADMIN") {
-            const defaultHub = allHubs[0];
-            setCurrentHub(defaultHub);
-            setSelectedHubId(defaultHub?.hubId || "");
+            const urlHubId = searchParams.get("hubId");
+            const matchedHub = (urlHubId && allHubs.find((h) => h.hubId === urlHubId)) || allHubs[0];
+            setCurrentHub(matchedHub);
+            setSelectedHubId(matchedHub?.hubId || "");
+            if (matchedHub && urlHubId !== matchedHub.hubId) {
+              router.replace(`${pathname}?hubId=${matchedHub.hubId}`, { scroll: false });
+            }
           }
         }
       } catch (err) {
@@ -76,12 +81,28 @@ function ManagerSidebarContent() {
     if (isAuthenticated) {
       fetchHubs();
     }
-  }, [user, isAuthenticated]);
+  }, [user, isAuthenticated, searchParams, pathname, router]);
+
+  // Sync hub selection when URL param changes
+  useEffect(() => {
+    if (user?.role === "SUPERADMIN" && hubs.length > 0) {
+      const urlHubId = searchParams.get("hubId");
+      if (urlHubId && urlHubId !== selectedHubId) {
+        const matched = hubs.find((h) => h.hubId === urlHubId);
+        if (matched) {
+          setSelectedHubId(matched.hubId);
+          setCurrentHub(matched);
+          window.dispatchEvent(new CustomEvent("superadmin-hub-change", { detail: matched.hubId }));
+        }
+      }
+    }
+  }, [searchParams, user, hubs, selectedHubId]);
 
   const handleSelectSuperadminHub = (hubId) => {
     setSelectedHubId(hubId);
     const found = hubs.find((h) => h.hubId === hubId);
     setCurrentHub(found);
+    router.replace(`${pathname}?hubId=${hubId}`, { scroll: false });
     window.dispatchEvent(new CustomEvent("superadmin-hub-change", { detail: hubId }));
   };
 
@@ -227,6 +248,9 @@ function ManagerSidebarContent() {
 
           {navItems.map((item) => {
             const Icon = item.icon;
+            const targetHref = user?.role === "SUPERADMIN" && selectedHubId
+              ? `${item.href}?hubId=${selectedHubId}`
+              : item.href;
             const isActive = item.exact
               ? pathname === item.href
               : pathname === item.href || pathname.startsWith(item.href + "/");
@@ -234,7 +258,7 @@ function ManagerSidebarContent() {
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={targetHref}
                 onClick={() => setSidebarOpen(false)}
                 className={`flex items-center justify-between px-3.5 py-3 rounded-2xl text-left transition-all group ${
                   isActive
@@ -344,7 +368,9 @@ export default function ManagerLayout({ children }) {
       {/* Main Workspace */}
       <div className="flex-1 flex flex-col min-w-0 pt-16 lg:pt-0">
         <main className="flex-1 bg-black">
-          {children}
+          <Suspense fallback={<div className="p-8 text-neutral-400 text-xs">Loading station workspace...</div>}>
+            {children}
+          </Suspense>
         </main>
       </div>
     </div>

@@ -87,8 +87,12 @@ function HubInfoContent() {
         const urlHubId = searchParams.get("hubId");
         if (urlHubId && loadedHubs.some((h) => h.hubId === urlHubId)) {
           setSelectedHubId(urlHubId);
-        } else if (!selectedHubId && loadedHubs.length > 0) {
-          setSelectedHubId(loadedHubs[0].hubId);
+        } else if (loadedHubs.length > 0) {
+          const defaultHubId = selectedHubId && loadedHubs.some((h) => h.hubId === selectedHubId)
+            ? selectedHubId
+            : loadedHubs[0].hubId;
+          setSelectedHubId(defaultHubId);
+          router.replace(`/admin/hub-info?hubId=${defaultHubId}`, { scroll: false });
         }
       }
       if (usersRes.data?.success) {
@@ -99,11 +103,19 @@ function HubInfoContent() {
     } finally {
       setLoading(false);
     }
-  }, [searchParams, selectedHubId]);
+  }, [searchParams, selectedHubId, router]);
 
   useEffect(() => {
     fetchHubs();
   }, [fetchHubs]);
+
+  // Synchronize when URL search param changes
+  useEffect(() => {
+    const urlHubId = searchParams.get("hubId");
+    if (urlHubId && urlHubId !== selectedHubId) {
+      setSelectedHubId(urlHubId);
+    }
+  }, [searchParams, selectedHubId]);
 
   // Load detailed telemetry and fleet when selectedHubId changes
   const fetchHubDetails = useCallback(async (hubId) => {
@@ -471,8 +483,9 @@ function HubInfoContent() {
                   href={`/manager?hubId=${activeHub.hubId}`}
                   target="_blank"
                   className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition-all flex items-center gap-2 shadow-lg shadow-purple-600/20"
+                  title="Launch Live Operations & Station Dispatch Desk"
                 >
-                  <span>Launch Dispatch Console</span>
+                  <span>Open Station Desk</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </Link>
               </div>

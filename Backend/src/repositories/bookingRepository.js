@@ -84,6 +84,9 @@ const updateBookingStatus = async (bookingId, status) => {
   }
 
   booking.status = status;
+  if (status === "CONFIRMED") {
+    booking.locked_until = null;
+  }
   await booking.save();
   return booking;
 };
@@ -234,6 +237,53 @@ const getAllBookingsAdmin = async (filters = {}) => {
   };
 };
 
+// Check if user already holds an unexpired pending payment lock on a vehicle
+const findActivePendingHold = async (userId, vehicleId) => {
+  return await Booking.findOne({
+    where: {
+      user_id: userId,
+      vehicle_id: vehicleId,
+      status: "PENDING_PAYMENT",
+      locked_until: { [Op.gt]: new Date() },
+    },
+    order: [["createdAt", "DESC"]],
+  });
+};
+
+// Permanently clear temporary hold bookings for a user and vehicle upon confirmed payment
+const cancelSupersededPendingHolds = async (userId, vehicleId, excludeBookingId = null) => {
+  const where = {
+    user_id: userId,
+    vehicle_id: vehicleId,
+    status: { [Op.in]: ["PENDING_PAYMENT", "EXPIRED"] },
+  };
+  if (excludeBookingId) {
+    where.bookingId = { [Op.ne]: excludeBookingId };
+  }
+  return await Booking.destroy({ where, force: true });
+};
+
+// Permanently remove a booking record (e.g. obsolete temporary hold)
+const deleteBookingRecord = async (bookingId) => {
+  return await Booking.destroy({
+    where: { bookingId },
+    force: true,
+  });
+};
+
+// Anti-Abuse Guard: Release/purge any other active temporary holds for this user on other vehicles
+// Ensures a single user account can hold at most ONE vehicle at a time across the entire platform
+const releaseOtherActiveHolds = async (userId, currentVehicleId) => {
+  return await Booking.destroy({
+    where: {
+      user_id: userId,
+      vehicle_id: { [Op.ne]: currentVehicleId },
+      status: "PENDING_PAYMENT",
+    },
+    force: true,
+  });
+};
+
 // List bookings for a specific customer with complete details and pagination
 const getUserBookings = async (userId, filters = {}) => {
   const where = { user_id: userId };
@@ -242,9 +292,41 @@ const getUserBookings = async (userId, filters = {}) => {
       where.status = { [Op.in]: ["ACTIVE_TRIP", "EMERGENCY_HOLD"] };
     } else if (filters.status === "UPCOMING") {
       where.status = "CONFIRMED";
+    } else if (filters.status === "CANCELLED") {
+      where.status = "CANCELLED";
+      where[Op.or] = [
+        { cancellation_reason: null },
+        { cancellation_reason: { [Op.notLike]: "%Superseded%" } },
+      ];
+    } else if (filters.status === "PENDING_PAYMENT") {
+      where.status = "PENDING_PAYMENT";
+      where.locked_until = { [Op.gt]: new Date() };
     } else {
       where.status = filters.status;
     }
+  } else {
+    // Under "ALL", only show actual customer trips:
+    // Exclude EXPIRED ghost holds, exclude expired PENDING_PAYMENT holds, and exclude superseded holds
+    where[Op.and] = [
+      {
+        status: { [Op.ne]: "EXPIRED" },
+      },
+      {
+        [Op.or]: [
+          { status: { [Op.ne]: "PENDING_PAYMENT" } },
+          {
+            status: "PENDING_PAYMENT",
+            locked_until: { [Op.gt]: new Date() },
+          },
+        ],
+      },
+      {
+        [Op.or]: [
+          { cancellation_reason: null },
+          { cancellation_reason: { [Op.notLike]: "%Superseded%" } },
+        ],
+      },
+    ];
   }
 
   const page = Math.max(1, parseInt(filters.page, 10) || 1);
@@ -350,6 +432,10 @@ module.exports = {
   getAllBookingsAdmin,
   getUserBookings,
   cancelBookingByCustomer,
+  findActivePendingHold,
+  cancelSupersededPendingHolds,
+  deleteBookingRecord,
+  releaseOtherActiveHolds,
 };
 
 

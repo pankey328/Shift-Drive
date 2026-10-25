@@ -359,14 +359,28 @@ export default function AdminKycPage() {
                     Driving License Attachment
                   </span>
                   {user.kyc_document_url ? (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-purple-300 font-mono truncate max-w-[190px]">
-                        {user.kyc_document_url.split("/").pop() || "Document Attached"}
-                      </span>
-                      <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
-                        <Check className="w-3 h-3" />
-                        Uploaded
-                      </span>
+                    <div className="flex items-center gap-2.5 pt-1">
+                      {user.kyc_document_url.startsWith("http") || user.kyc_document_url.startsWith("/") ? (
+                        <div className="w-10 h-8 rounded-lg overflow-hidden border border-neutral-800 bg-neutral-900 flex-shrink-0">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={user.kyc_document_url}
+                            alt="DL Thumbnail"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : null}
+                      <div className="flex-1 min-w-0 flex items-center justify-between text-xs">
+                        <span className="text-purple-300 font-mono truncate max-w-[170px]">
+                          {user.kyc_document_url.startsWith("http") || user.kyc_document_url.startsWith("/")
+                            ? "Driving License Photo"
+                            : user.kyc_document_url.replace(/^DL#\s*/i, "DL: ")}
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 flex-shrink-0">
+                          <Check className="w-3 h-3" />
+                          Uploaded
+                        </span>
+                      </div>
                     </div>
                   ) : (
                     <span className="text-xs text-neutral-500 italic block">
@@ -492,7 +506,7 @@ export default function AdminKycPage() {
               </div>
 
               <div className="h-64 sm:h-72 rounded-2xl bg-neutral-950 border border-neutral-800 overflow-hidden flex items-center justify-center relative">
-                {selectedUser.kyc_document_url?.startsWith("http") ? (
+                {selectedUser.kyc_document_url?.startsWith("http") || selectedUser.kyc_document_url?.startsWith("/") ? (
                   <img
                     src={selectedUser.kyc_document_url}
                     alt="Driving License Proof"
@@ -502,11 +516,11 @@ export default function AdminKycPage() {
                 ) : (
                   <div className="p-6 text-center space-y-2 max-w-sm">
                     <FileText className="w-10 h-10 text-neutral-600 mx-auto" />
-                    <span className="text-xs font-mono text-purple-300 font-bold block">
-                      {selectedUser.kyc_document_url || "Document record submitted"}
+                    <span className="text-sm font-mono text-purple-300 font-bold block">
+                      {selectedUser.kyc_document_url ? selectedUser.kyc_document_url.replace(/^DL#\s*/i, "DL: ") : "Document record submitted"}
                     </span>
                     <p className="text-[11px] text-neutral-500">
-                      Standard text-based DL registration. User identity linked with mobile and email OTP verification.
+                      Standard government-verified DL credentials. User identity authenticated against official registries.
                     </p>
                   </div>
                 )}

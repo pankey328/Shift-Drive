@@ -16,6 +16,7 @@ import {
   X,
   Gauge,
   Building2,
+  LifeBuoy,
 } from "lucide-react";
 
 export default function Navbar() {
@@ -90,6 +91,13 @@ export default function Navbar() {
               My Trips
             </Link>
           )}
+          <Link
+            href="/support"
+            className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors"
+          >
+            <LifeBuoy className="w-4 h-4 text-emerald-400" />
+            Support
+          </Link>
         </nav>
 
         {/* Right CTA / User State */}
@@ -187,6 +195,15 @@ export default function Navbar() {
                         >
                           <ShieldAlert className="w-4 h-4 text-neutral-400" />
                           KYC License Status
+                        </Link>
+
+                        <Link
+                          href="/support"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800/60 transition-colors"
+                        >
+                          <LifeBuoy className="w-4 h-4 text-emerald-400" />
+                          Support Desk
                         </Link>
                       </>
                     ) : user?.role === "SUPERADMIN" ? (

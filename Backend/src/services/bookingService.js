@@ -10,6 +10,10 @@ const {
   getAllBookingsAdmin,
   getUserBookings,
   cancelBookingByCustomer,
+  findActivePendingHold,
+  cancelSupersededPendingHolds,
+  deleteBookingRecord,
+  releaseOtherActiveHolds,
 } = require("../repositories/bookingRepository");
 const {
   processFinancialMovement,
@@ -116,6 +120,28 @@ const initiateBooking = async (
     throw error;
   }
 
+  // 1. If user already has an active, unexpired pending hold for this vehicle:
+  const existingHold = await findActivePendingHold(userId, vehicleId);
+  if (existingHold) {
+    const existingStart = new Date(existingHold.start_time).getTime();
+    const existingEnd = new Date(existingHold.end_time).getTime();
+    const isSameSchedule =
+      existingStart === start.getTime() &&
+      existingEnd === end.getTime() &&
+      existingHold.dropoff_hub_id === dropoffHubId;
+
+    if (isSameSchedule) {
+      return existingHold;
+    }
+
+    // Schedule or return hub changed: delete obsolete hold so new timeframe is evaluated, held, and priced
+    await deleteBookingRecord(existingHold.bookingId);
+  }
+
+  // 2. Anti-Abuse Guard: A customer can hold at most ONE vehicle at a time across the platform.
+  // Release any active hold on any other car so a user cannot monopolize/block multiple cars.
+  await releaseOtherActiveHolds(userId, vehicleId);
+
   // Calculate safety buffers (2 hours)
   const paddedStart = new Date(start.getTime() - 2 * 60 * 60 * 1000);
   const paddedEnd = new Date(end.getTime() + 2 * 60 * 60 * 1000);
@@ -213,14 +239,6 @@ const confirmBookingPayment = async (userId, bookingId) => {
     throw error;
   }
 
-  if (user.kyc_status !== "VERIFIED") {
-    const error = new Error(
-      "KYC verification required. Your driving license must be approved before confirming a booking and taking vehicle handover."
-    );
-    error.statusCode = 403;
-    throw error;
-  }
-
   if (parseFloat(user.wallet_balance) < parseFloat(booking.total_price)) {
     const error = new Error(
       `Insufficient wallet balance. Please top up ₹${booking.total_price - user.wallet_balance}`
@@ -238,7 +256,12 @@ const confirmBookingPayment = async (userId, bookingId) => {
     bookingId,
   });
 
-  return await updateBookingStatus(bookingId, "CONFIRMED");
+  const confirmedBooking = await updateBookingStatus(bookingId, "CONFIRMED");
+
+  // Automatically cancel and supersede any sibling PENDING_PAYMENT holds for this user and vehicle
+  await cancelSupersededPendingHolds(userId, booking.vehicle_id, bookingId);
+
+  return confirmedBooking;
 };
 
 const reportAccident = async (bookingId, notes = null) => {

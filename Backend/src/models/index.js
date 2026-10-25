@@ -83,6 +83,14 @@ LostAndFound.belongsTo(Booking, { foreignKey: "booking_id", as: "Booking" });
 User.hasMany(LostAndFound, { foreignKey: "logged_by", as: "LoggedLostItems" });
 LostAndFound.belongsTo(User, { foreignKey: "logged_by", as: "LoggedBy" });
 
+// Support Tickets & AI Resolutions
+const SupportTicket = require("./SupportTicket");
+User.hasMany(SupportTicket, { foreignKey: "user_id", as: "SupportTickets" });
+SupportTicket.belongsTo(User, { foreignKey: "user_id", as: "Customer" });
+
+Booking.hasMany(SupportTicket, { foreignKey: "booking_id", as: "SupportTickets" });
+SupportTicket.belongsTo(Booking, { foreignKey: "booking_id", as: "Booking" });
+
 module.exports = {
   sequelize,
   User,
@@ -93,4 +101,5 @@ module.exports = {
   Inspection,
   FleetTransfer,
   LostAndFound,
+  SupportTicket,
 };

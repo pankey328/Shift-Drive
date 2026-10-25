@@ -231,6 +231,37 @@ const submitKyc = async (req, res) => {
   }
 };
 
+const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const { name, phone } = req.body;
+    const userRepository = require("../repositories/userRepository");
+    const user = await userRepository.findUserById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    if (name) user.name = name.trim();
+    if (phone !== undefined) user.phone = phone ? phone.trim() : null;
+    await user.save();
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user: {
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        wallet_balance: user.wallet_balance,
+        kyc_status: user.kyc_status,
+      },
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message || "Failed to update profile" });
+  }
+};
+
 module.exports = {
   login,
   googleLogin,
@@ -243,5 +274,6 @@ module.exports = {
   registerHubManager,
   setupPermanentPassword,
   submitKyc,
+  updateProfile,
 };
 

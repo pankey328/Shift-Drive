@@ -30,6 +30,7 @@ import {
   KeyRound,
   FileText,
   Edit3,
+  ZoomIn,
 } from "lucide-react";
 import Pagination from "@/components/Pagination";
 
@@ -38,6 +39,7 @@ export default function AdminUsersPage() {
   const [hubs, setHubs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedDlZoom, setSelectedDlZoom] = useState(null);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -1158,6 +1160,59 @@ export default function AdminUsersPage() {
                   </div>
                 </div>
 
+                {/* Driving License Proof Card (if Customer) */}
+                {selectedUserAudit.kyc_document_url && (
+                  <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-purple-400" />
+                        Driving License Proof
+                      </span>
+                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                        {selectedUserAudit.kyc_status || "VERIFIED"}
+                      </span>
+                    </div>
+
+                    {selectedUserAudit.kyc_document_url.startsWith("http") || selectedUserAudit.kyc_document_url.startsWith("/") ? (
+                      <div className="flex items-center gap-3 p-2 rounded-xl bg-neutral-900 border border-neutral-800">
+                        <div
+                          onClick={() => setSelectedDlZoom(selectedUserAudit.kyc_document_url)}
+                          className="w-16 h-12 rounded-lg overflow-hidden border border-neutral-700 bg-black flex-shrink-0 cursor-pointer group relative"
+                          title="Click to zoom DL"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={selectedUserAudit.kyc_document_url}
+                            alt="DL Proof"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <ZoomIn className="w-4 h-4 text-white" />
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-bold text-white block">Government DL Uploaded</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDlZoom(selectedUserAudit.kyc_document_url)}
+                            className="text-[11px] text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 mt-0.5 cursor-pointer"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>View DL Document</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-between text-xs">
+                        <span className="font-mono text-purple-300 font-bold">
+                          {selectedUserAudit.kyc_document_url.replace(/^DL#\s*/i, "DL: ")}
+                        </span>
+                        <span className="text-[10px] text-neutral-400">Authenticated ID Record</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Managed Station Hub (for managers) */}
                 {selectedUserAudit.role === "HUB_ADMIN" && (
                   <div className="p-3.5 rounded-2xl bg-blue-950/20 border border-blue-800/30 space-y-1.5">
@@ -1270,6 +1325,24 @@ export default function AdminUsersPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Full-Screen DL Image Preview Lightbox */}
+      {selectedDlZoom && (
+        <div
+          onClick={() => setSelectedDlZoom(null)}
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div className="relative max-w-3xl w-full max-h-[85vh] flex flex-col items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={selectedDlZoom}
+              alt="Driving license proof zoom"
+              className="max-w-full max-h-[80vh] rounded-2xl object-contain border border-neutral-800 shadow-2xl"
+            />
+            <p className="text-xs text-neutral-400 mt-3">Click anywhere to close preview</p>
           </div>
         </div>
       )}

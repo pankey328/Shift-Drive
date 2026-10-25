@@ -382,16 +382,32 @@ function KycContent() {
                 <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 block">
                   Document On File
                 </span>
-                <div className="relative rounded-2xl overflow-hidden border border-neutral-800 bg-neutral-950 h-52 flex items-center justify-center">
-                  <img
-                    src={documentUrl}
-                    alt="Current KYC License"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-mono text-emerald-400 border border-white/10">
-                    {kycStatus}
+                {documentUrl.startsWith("http") || documentUrl.startsWith("/") || documentUrl.startsWith("data:") ? (
+                  <div className="relative rounded-2xl overflow-hidden border border-neutral-800 bg-neutral-950 h-52 flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={documentUrl}
+                      alt="Current KYC License"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-mono text-emerald-400 border border-white/10">
+                      {kycStatus}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="relative rounded-2xl overflow-hidden border border-neutral-800 bg-neutral-950 p-6 flex flex-col items-center justify-center text-center space-y-2 min-h-48">
+                    <ShieldCheck className="w-10 h-10 text-emerald-400" />
+                    <span className="text-sm font-mono font-bold text-white block">
+                      {documentUrl.replace(/^DL#\s*/i, "DL: ")}
+                    </span>
+                    <span className="text-xs text-neutral-400 block">
+                      Official Government Driving License Verified
+                    </span>
+                    <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-mono text-emerald-400 border border-white/10">
+                      {kycStatus}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

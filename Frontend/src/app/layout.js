@@ -3,6 +3,7 @@ import "./globals.css";
 import ReduxProvider from "@/redux/Providers";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import AiChatbotWidget from "@/components/AiChatbotWidget";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -28,6 +29,7 @@ export default function RootLayout({ children }) {
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />
+          <AiChatbotWidget />
         </ReduxProvider>
       </body>
     </html>
