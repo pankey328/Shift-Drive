@@ -8,6 +8,7 @@ import { useDispatch } from "react-redux";
 import { updateUser } from "@/redux/slices/authSlice";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Pagination from "@/components/Pagination";
+import { loadRazorpayScript } from "@/utils/razorpay";
 import {
   Wallet,
   ShieldCheck,
@@ -98,7 +99,7 @@ function WalletContent() {
     }
   }, [user?.wallet_balance]);
 
-  // Handle Mock Deposit
+  // Handle Razorpay Deposit
   const handleDeposit = async (amountToAdd) => {
     const num = parseFloat(amountToAdd);
     if (!num || num <= 0) {
@@ -111,20 +112,96 @@ function WalletContent() {
     setErrorNotice("");
 
     try {
-      const res = await api.post("/wallet/topup/mock", { amount: num });
-      if (res.data?.success) {
-        const newBal = parseFloat(res.data.data?.newBalance ?? (walletBalance + num));
-        setWalletBalance(newBal);
-        dispatch(updateUser({ wallet_balance: newBal }));
-        setNotice(`₹${num.toLocaleString("en-IN")} deposited successfully into your ShiftDrive Wallet!`);
-        setCustomAmount("");
-        await fetchWalletData();
-        setTimeout(() => setNotice(""), 4000);
+      // 1. Create order on backend
+      const orderRes = await api.post("/wallet/razorpay/create-order", { amount: num });
+      const orderData = orderRes.data?.data;
+
+      if (!orderData) {
+        throw new Error("Could not initialize payment order.");
       }
+
+      // 2. Load Razorpay script
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded || orderData.isSimulation || !window.Razorpay) {
+        // Fallback / Sandbox direct simulation mode
+        const verifyRes = await api.post("/wallet/razorpay/verify-payment", {
+          orderId: orderData.orderId,
+          paymentId: `pay_sim_${Date.now()}`,
+          signature: "simulated_signature",
+          amount: num,
+        });
+
+        if (verifyRes.data?.success) {
+          const newBal = parseFloat(verifyRes.data.data?.newBalance ?? (walletBalance + num));
+          setWalletBalance(newBal);
+          dispatch(updateUser({ wallet_balance: newBal }));
+          setNotice(`₹${num.toLocaleString("en-IN")} deposited successfully into your ShiftDrive Wallet!`);
+          setCustomAmount("");
+          await fetchWalletData();
+          setTimeout(() => setNotice(""), 4000);
+        }
+        return;
+      }
+
+      // 3. Open Real Razorpay Checkout Modal
+      const options = {
+        key: orderData.keyId,
+        amount: Math.round(num * 100),
+        currency: "INR",
+        name: "ShiftDrive India",
+        description: `Wallet Deposit (₹${num.toLocaleString("en-IN")})`,
+        image: "https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=120&q=80",
+        order_id: orderData.orderId,
+        handler: async function (response) {
+          try {
+            setToppingUp(true);
+            const verifyRes = await api.post("/wallet/razorpay/verify-payment", {
+              orderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              signature: response.razorpay_signature,
+              amount: num,
+            });
+
+            if (verifyRes.data?.success) {
+              const newBal = parseFloat(verifyRes.data.data?.newBalance ?? (walletBalance + num));
+              setWalletBalance(newBal);
+              dispatch(updateUser({ wallet_balance: newBal }));
+              setNotice(`₹${num.toLocaleString("en-IN")} deposited successfully via Razorpay!`);
+              setCustomAmount("");
+              await fetchWalletData();
+              setTimeout(() => setNotice(""), 4000);
+            }
+          } catch (verifyErr) {
+            console.error("Verification error:", verifyErr.response?.data || verifyErr.message);
+            setErrorNotice(verifyErr.response?.data?.message || "Payment verification failed.");
+          } finally {
+            setToppingUp(false);
+          }
+        },
+        prefill: {
+          name: user?.name || "Customer",
+          email: user?.email || "",
+          contact: user?.phone || "",
+        },
+        theme: {
+          color: "#10b981", // ShiftDrive Emerald
+        },
+        modal: {
+          ondismiss: function () {
+            setToppingUp(false);
+          },
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on("payment.failed", function (failRes) {
+        setErrorNotice(failRes.error?.description || "Payment failed at gateway.");
+        setToppingUp(false);
+      });
+      rzp.open();
     } catch (err) {
       console.error("Top-up error:", err.response?.data || err.message);
-      setErrorNotice(err.response?.data?.message || "Deposit request failed. Please wait a few seconds and try again.");
-    } finally {
+      setErrorNotice(err.response?.data?.message || "Deposit request failed. Please try again.");
       setToppingUp(false);
     }
   };

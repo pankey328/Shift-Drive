@@ -7,6 +7,7 @@ import api from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useDispatch } from "react-redux";
 import { updateUser } from "@/redux/slices/authSlice";
+import { loadRazorpayScript } from "@/utils/razorpay";
 import {
   Car,
   Clock,
@@ -65,7 +66,8 @@ function CheckoutContent() {
 
   // 2-Stage Flow: "REVIEW" (Confirm Trip Details & Driver) -> "PAYMENT" (Lock Inventory & Pay)
   const [checkoutStage, setCheckoutStage] = useState(resumeBookingId ? "PAYMENT" : "REVIEW");
-  const [paymentMethod, setPaymentMethod] = useState("WALLET"); // "WALLET" | "UPI" | "CARD"
+  const [paymentMethod, setPaymentMethod] = useState("WALLET"); // "WALLET" | "RAZORPAY"
+  const [directSplitOption, setDirectSplitOption] = useState("SHORTFALL"); // "SHORTFALL" | "FULL"
 
   // Interactive Schedule States
   const [startTime, setStartTime] = useState(initialStartTime);
@@ -244,6 +246,15 @@ function CheckoutContent() {
 
   const neededAmount = Math.max(0, estimatedTotal - walletBalance);
   const isKycVerified = user?.kyc_status === "VERIFIED";
+
+  // Auto-select payment method tab based on wallet balance sufficiency
+  useEffect(() => {
+    if (walletBalance >= estimatedTotal && estimatedTotal > 0) {
+      setPaymentMethod("WALLET");
+    } else if (estimatedTotal > 0 && walletBalance < estimatedTotal) {
+      setPaymentMethod("RAZORPAY");
+    }
+  }, [walletBalance, estimatedTotal]);
 
   // Initiate 5-minute inventory hold
   const handleInitiateHold = async (forceNew = false, overrides = null) => {
@@ -509,22 +520,244 @@ function CheckoutContent() {
     }
   };
 
-  // Quick Mock Topup
+  // Direct Razorpay Payment with Automatic One-Click Booking Confirmation
+  const handleDirectRazorpayPay = async (forcedAmount = null) => {
+    if (!booking) return;
+
+    if (isHoldExpired) {
+      setPayError("Your 5-minute vehicle hold has expired. Please re-lock the car to continue.");
+      return;
+    }
+
+    // Calculate exact charge amount based on user selection
+    let amountToCharge;
+    if (forcedAmount !== null) {
+      amountToCharge = parseFloat(forcedAmount);
+    } else if (walletBalance > 0 && directSplitOption === "SHORTFALL") {
+      amountToCharge = neededAmount;
+    } else {
+      amountToCharge = estimatedTotal;
+    }
+
+    if (isNaN(amountToCharge) || amountToCharge <= 0) {
+      // If zero balance required, proceed to direct wallet confirmation
+      return handleConfirmPayment();
+    }
+
+    setPaying(true);
+    setPayError("");
+    setTopupSuccess("");
+
+    try {
+      // 1. Create order on Razorpay gateway
+      const orderRes = await api.post("/wallet/razorpay/create-order", { amount: amountToCharge });
+      const orderData = orderRes.data?.data;
+
+      if (!orderData) {
+        throw new Error("Could not initialize payment order.");
+      }
+
+      // 2. Load Razorpay script
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded || orderData.isSimulation || !window.Razorpay) {
+        // Direct Sandbox simulation flow
+        const verifyRes = await api.post("/wallet/razorpay/verify-payment", {
+          orderId: orderData.orderId,
+          paymentId: `pay_sim_${Date.now()}`,
+          signature: "simulated_signature",
+          amount: amountToCharge,
+        });
+
+        if (verifyRes.data?.success) {
+          const freshBalance = parseFloat(verifyRes.data.data?.newBalance ?? (walletBalance + amountToCharge));
+          setWalletBalance(freshBalance);
+          dispatch(updateUser({ wallet_balance: freshBalance }));
+
+          // 3. Atomically confirm booking immediately
+          const confirmRes = await api.post(`/bookings/${booking.bookingId}/pay`);
+          if (confirmRes.data?.success) {
+            setConfirmedBooking(confirmRes.data.data);
+            const remainingBal = Math.max(0, freshBalance - parseFloat(booking.total_price));
+            setWalletBalance(remainingBal);
+            dispatch(updateUser({ wallet_balance: remainingBal }));
+          }
+        }
+        return;
+      }
+
+      // 3. Open Real Razorpay Checkout Modal
+      const options = {
+        key: orderData.keyId,
+        amount: Math.round(amountToCharge * 100),
+        currency: "INR",
+        name: "ShiftDrive Car Rental",
+        description: `Booking #${booking.bookingId.slice(0, 8)} Payment (₹${amountToCharge.toLocaleString("en-IN")})`,
+        image: "https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=120&q=80",
+        order_id: orderData.orderId,
+        handler: async function (response) {
+          try {
+            setPaying(true);
+            const verifyRes = await api.post("/wallet/razorpay/verify-payment", {
+              orderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              signature: response.razorpay_signature,
+              amount: amountToCharge,
+            });
+
+            if (verifyRes.data?.success) {
+              const freshBalance = parseFloat(verifyRes.data.data?.newBalance ?? (walletBalance + amountToCharge));
+              setWalletBalance(freshBalance);
+              dispatch(updateUser({ wallet_balance: freshBalance }));
+
+              // Auto-confirm booking immediately without requiring any extra user click
+              try {
+                const confirmRes = await api.post(`/bookings/${booking.bookingId}/pay`);
+                if (confirmRes.data?.success) {
+                  setConfirmedBooking(confirmRes.data.data);
+                  const remainingBal = Math.max(0, freshBalance - parseFloat(booking.total_price));
+                  setWalletBalance(remainingBal);
+                  dispatch(updateUser({ wallet_balance: remainingBal }));
+                }
+              } catch (confirmErr) {
+                console.error("Booking confirmation error after payment:", confirmErr);
+                setPayError(
+                  `Payment of ₹${amountToCharge.toLocaleString("en-IN")} was received and credited to your wallet. Please click 'Confirm Booking' to finalize.`
+                );
+              }
+            }
+          } catch (verifyErr) {
+            console.error("Direct payment verification error:", verifyErr.response?.data || verifyErr.message);
+            setPayError(verifyErr.response?.data?.message || "Payment verification failed.");
+          } finally {
+            setPaying(false);
+          }
+        },
+        prefill: {
+          name: user?.name || "Customer",
+          email: user?.email || "",
+          contact: user?.phone || "",
+        },
+        theme: {
+          color: "#10b981",
+        },
+        modal: {
+          ondismiss: function () {
+            setPaying(false);
+          },
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on("payment.failed", function (failRes) {
+        setPayError(failRes.error?.description || "Payment failed at gateway.");
+        setPaying(false);
+      });
+      rzp.open();
+    } catch (err) {
+      console.error("Direct payment initiation error:", err.response?.data || err.message);
+      setPayError(err.response?.data?.message || "Failed to initiate payment gateway.");
+      setPaying(false);
+    } finally {
+      // In non-modal branches, ensure paying is stopped if done
+    }
+  };
+
+  // Razorpay Quick Topup
   const handleQuickTopup = async (amountToAdd) => {
+    const num = parseFloat(amountToAdd);
+    if (!num || num <= 0) return;
+
     setToppingUp(true);
     setTopupSuccess("");
+    setPayError("");
+
     try {
-      const res = await api.post("/wallet/topup/mock", { amount: amountToAdd });
-      if (res.data?.success) {
-        const newBal = parseFloat(res.data.data?.balance || (walletBalance + amountToAdd));
-        setWalletBalance(newBal);
-        dispatch(updateUser({ wallet_balance: newBal }));
-        setTopupSuccess(`₹${amountToAdd.toLocaleString("en-IN")} deposited successfully!`);
-        setTimeout(() => setTopupSuccess(""), 4000);
+      // 1. Create order
+      const orderRes = await api.post("/wallet/razorpay/create-order", { amount: num });
+      const orderData = orderRes.data?.data;
+
+      if (!orderData) {
+        throw new Error("Could not initialize payment order.");
       }
+
+      // 2. Load script
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded || orderData.isSimulation || !window.Razorpay) {
+        // Direct Sandbox simulation
+        const verifyRes = await api.post("/wallet/razorpay/verify-payment", {
+          orderId: orderData.orderId,
+          paymentId: `pay_sim_${Date.now()}`,
+          signature: "simulated_signature",
+          amount: num,
+        });
+
+        if (verifyRes.data?.success) {
+          const newBal = parseFloat(verifyRes.data.data?.newBalance ?? (walletBalance + num));
+          setWalletBalance(newBal);
+          dispatch(updateUser({ wallet_balance: newBal }));
+          setTopupSuccess(`₹${num.toLocaleString("en-IN")} deposited successfully!`);
+          setTimeout(() => setTopupSuccess(""), 4000);
+        }
+        return;
+      }
+
+      // 3. Open Razorpay Checkout Modal
+      const options = {
+        key: orderData.keyId,
+        amount: Math.round(num * 100),
+        currency: "INR",
+        name: "ShiftDrive India",
+        description: `Booking Top-Up (₹${num.toLocaleString("en-IN")})`,
+        image: "https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=120&q=80",
+        order_id: orderData.orderId,
+        handler: async function (response) {
+          try {
+            setToppingUp(true);
+            const verifyRes = await api.post("/wallet/razorpay/verify-payment", {
+              orderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              signature: response.razorpay_signature,
+              amount: num,
+            });
+
+            if (verifyRes.data?.success) {
+              const newBal = parseFloat(verifyRes.data.data?.newBalance ?? (walletBalance + num));
+              setWalletBalance(newBal);
+              dispatch(updateUser({ wallet_balance: newBal }));
+              setTopupSuccess(`₹${num.toLocaleString("en-IN")} deposited via Razorpay!`);
+              setTimeout(() => setTopupSuccess(""), 4000);
+            }
+          } catch (err) {
+            console.error("Top-up verification error:", err.response?.data || err.message);
+            setPayError(err.response?.data?.message || "Payment verification failed.");
+          } finally {
+            setToppingUp(false);
+          }
+        },
+        prefill: {
+          name: user?.name || "Customer",
+          email: user?.email || "",
+          contact: user?.phone || "",
+        },
+        theme: {
+          color: "#10b981",
+        },
+        modal: {
+          ondismiss: function () {
+            setToppingUp(false);
+          },
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on("payment.failed", function (failRes) {
+        setPayError(failRes.error?.description || "Payment failed at gateway.");
+        setToppingUp(false);
+      });
+      rzp.open();
     } catch (err) {
       console.error("Top-up error:", err.response?.data || err.message);
-    } finally {
+      setPayError(err.response?.data?.message || "Failed to initiate payment.");
       setToppingUp(false);
     }
   };
@@ -1105,25 +1338,66 @@ function CheckoutContent() {
                   </div>
                 )}
 
-                {/* Section: ShiftDrive Wallet Payment & Topup Card */}
+                {/* Section: Direct Payment & ShiftDrive Wallet Card */}
                 <div className="p-6 rounded-3xl bg-neutral-900/60 border border-neutral-800 space-y-5">
                   <div className="flex items-center justify-between border-b border-neutral-800/80 pb-4">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold text-sm">
-                        <Wallet className="w-4 h-4" />
+                        <CreditCard className="w-4 h-4" />
                       </div>
                       <div>
-                        <h3 className="text-base font-bold text-white">ShiftDrive Digital Wallet</h3>
-                        <p className="text-xs text-neutral-400">All bookings are debited directly from your customer wallet</p>
+                        <h3 className="text-base font-bold text-white">Choose Payment Method</h3>
+                        <p className="text-xs text-neutral-400">Pay directly online or debit your customer wallet</p>
                       </div>
                     </div>
 
                     <div className="text-right">
-                      <span className="text-[10px] text-neutral-500 uppercase font-bold block">Current Balance</span>
+                      <span className="text-[10px] text-neutral-500 uppercase font-bold block">Current Wallet</span>
                       <span className={`text-base font-bold font-mono ${walletBalance >= estimatedTotal ? "text-emerald-400" : "text-amber-400"}`}>
                         ₹{walletBalance.toLocaleString("en-IN")}
                       </span>
                     </div>
+                  </div>
+
+                  {/* Payment Method Selector Tabs */}
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-neutral-950/80 rounded-2xl border border-neutral-800">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("WALLET")}
+                      className={`py-3 px-3 rounded-xl text-xs font-bold transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 cursor-pointer ${
+                        paymentMethod === "WALLET"
+                          ? "bg-neutral-800 text-white shadow-md border border-neutral-700"
+                          : "text-neutral-400 hover:text-white"
+                      }`}
+                    >
+                      <Wallet className="w-3.5 h-3.5" />
+                      <span>ShiftDrive Wallet</span>
+                      <span
+                        className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono uppercase ${
+                          walletBalance >= estimatedTotal
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : "bg-amber-500/20 text-amber-300"
+                        }`}
+                      >
+                        {walletBalance >= estimatedTotal ? "Sufficient" : `Short ₹${neededAmount.toLocaleString("en-IN")}`}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("RAZORPAY")}
+                      className={`py-3 px-3 rounded-xl text-xs font-bold transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 cursor-pointer ${
+                        paymentMethod === "RAZORPAY"
+                          ? "bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-300 border border-emerald-500/40 shadow-md"
+                          : "text-neutral-400 hover:text-white"
+                      }`}
+                    >
+                      <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Razorpay Direct</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase bg-emerald-500/20 text-emerald-300">
+                        UPI / Cards
+                      </span>
+                    </button>
                   </div>
 
                   {topupSuccess && (
@@ -1133,113 +1407,276 @@ function CheckoutContent() {
                     </div>
                   )}
 
-                  {/* Balance Verification Status */}
-                  {walletBalance >= estimatedTotal ? (
-                    <div className="p-4 rounded-2xl bg-emerald-950/20 border border-emerald-800/40 text-xs space-y-2">
-                      <div className="flex items-center justify-between text-emerald-300 font-semibold">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                          <span>Sufficient balance available to book this car.</span>
+                  {/* TAB 1: SHIFTDRIVE WALLET */}
+                  {paymentMethod === "WALLET" && (
+                    <div className="space-y-4">
+                      {walletBalance >= estimatedTotal ? (
+                        <div className="p-4 rounded-2xl bg-emerald-950/20 border border-emerald-800/40 text-xs space-y-2">
+                          <div className="flex items-center justify-between text-emerald-300 font-semibold">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                              <span>Sufficient balance available to book this car.</span>
+                            </div>
+                            <span className="font-mono text-white">₹{estimatedTotal.toLocaleString("en-IN")} due</span>
+                          </div>
+                          <div className="text-[11px] text-neutral-400 pl-6">
+                            Remaining wallet balance after booking:{" "}
+                            <strong className="text-white font-mono">
+                              ₹{(walletBalance - estimatedTotal).toLocaleString("en-IN")}
+                            </strong>
+                          </div>
                         </div>
-                        <span className="font-mono text-white">₹{estimatedTotal.toLocaleString("en-IN")} due</span>
-                      </div>
-                      <div className="text-[11px] text-neutral-400 pl-6">
-                        Remaining balance after booking: <strong className="text-white font-mono">₹{(walletBalance - estimatedTotal).toLocaleString("en-IN")}</strong>
-                      </div>
+                      ) : (
+                        <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-800/60 text-xs space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-amber-400 font-bold flex items-center gap-1.5">
+                              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                              <span>Insufficient Wallet Balance</span>
+                            </span>
+                            <span className="text-neutral-400 text-[11px]">
+                              Short by:{" "}
+                              <strong className="text-amber-400 font-mono font-bold">
+                                ₹{neededAmount.toLocaleString("en-IN")}
+                              </strong>
+                            </span>
+                          </div>
+
+                          <p className="text-neutral-300 text-[11px] leading-relaxed">
+                            Your balance is <strong>₹{walletBalance.toLocaleString("en-IN")}</strong>. You can switch to{" "}
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMethod("RAZORPAY")}
+                              className="text-emerald-400 font-bold underline hover:text-emerald-300 cursor-pointer"
+                            >
+                              Direct Razorpay Payment
+                            </button>{" "}
+                            to pay the remaining ₹{neededAmount.toLocaleString("en-IN")} via UPI/Card in 1 click, or top up your wallet below.
+                          </p>
+
+                          <div className="pt-2 border-t border-amber-800/40 flex flex-wrap gap-2 items-center">
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMethod("RAZORPAY")}
+                              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-black font-extrabold text-xs flex items-center gap-1.5 cursor-pointer shadow-md hover:brightness-110"
+                            >
+                              <CreditCard className="w-3.5 h-3.5" />
+                              <span>Pay Shortfall via Razorpay</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleQuickTopup(neededAmount)}
+                              disabled={toppingUp}
+                              className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 text-xs font-semibold cursor-pointer"
+                            >
+                              {toppingUp ? "Depositing..." : `Top Up ₹${neededAmount.toLocaleString("en-IN")}`}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleQuickTopup(2000)}
+                              disabled={toppingUp}
+                              className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 text-xs font-semibold cursor-pointer"
+                            >
+                              + ₹2,000
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Wallet Confirm Button */}
+                      <button
+                        type="button"
+                        onClick={handleConfirmPayment}
+                        disabled={
+                          paying ||
+                          initiatingHold ||
+                          isHoldExpired ||
+                          !booking ||
+                          walletBalance < estimatedTotal
+                        }
+                        className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 hover:brightness-110 text-black font-extrabold text-sm transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {paying ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-black" />
+                            <span>Deducting Wallet &amp; Confirming...</span>
+                          </>
+                        ) : initiatingHold ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-black" />
+                            <span>Reserving Inventory Lock...</span>
+                          </>
+                        ) : walletBalance < estimatedTotal ? (
+                          <>
+                            <AlertTriangle className="w-4 h-4 text-black" />
+                            <span>Insufficient Balance — Switch to Razorpay Above</span>
+                          </>
+                        ) : (
+                          <>
+                            <Wallet className="w-4 h-4" />
+                            <span>Confirm &amp; Pay ₹{estimatedTotal.toLocaleString("en-IN")} from Wallet</span>
+                          </>
+                        )}
+                      </button>
                     </div>
-                  ) : (
-                    <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-800/60 text-xs space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-amber-400 font-bold flex items-center gap-1.5">
-                          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                          <span>Insufficient Wallet Balance</span>
-                        </span>
-                        <span className="text-neutral-400 text-[11px]">
-                          Short by: <strong className="text-amber-400 font-mono font-bold">₹{neededAmount.toLocaleString("en-IN")}</strong>
-                        </span>
-                      </div>
+                  )}
 
-                      <p className="text-neutral-300 text-[11px] leading-relaxed">
-                        Your wallet balance is <strong>₹{walletBalance.toLocaleString("en-IN")}</strong>. Total booking amount is <strong>₹{estimatedTotal.toLocaleString("en-IN")}</strong>. Please top up your wallet first to confirm this booking.
-                      </p>
+                  {/* TAB 2: RAZORPAY DIRECT (1-CLICK CHECKOUT) */}
+                  {paymentMethod === "RAZORPAY" && (
+                    <div className="space-y-4">
+                      {/* Split or Full Amount Selection */}
+                      {walletBalance > 0 ? (
+                        <div className="space-y-2">
+                          <label className="text-[11px] font-bold text-neutral-300 block uppercase tracking-wider">
+                            Select Payment Breakdown:
+                          </label>
 
-                      <div className="pt-2 border-t border-amber-800/40">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block mb-2">
-                          Top Up Wallet to Continue:
-                        </span>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleQuickTopup(neededAmount)}
-                            disabled={toppingUp}
-                            className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-extrabold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-md disabled:opacity-50"
-                          >
-                            <Plus className="w-4 h-4" />
-                            <span>{toppingUp ? "Depositing..." : `Top Up Exact ₹${neededAmount.toLocaleString("en-IN")}`}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleQuickTopup(2000)}
-                            disabled={toppingUp}
-                            className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 text-xs font-semibold cursor-pointer"
-                          >
-                            + ₹2,000
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleQuickTopup(5000)}
-                            disabled={toppingUp}
-                            className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 text-xs font-semibold cursor-pointer"
-                          >
-                            + ₹5,000
-                          </button>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {/* Option A: Shortfall */}
+                            <div
+                              onClick={() => setDirectSplitOption("SHORTFALL")}
+                              className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                                directSplitOption === "SHORTFALL"
+                                  ? "bg-emerald-950/30 border-emerald-500/60 shadow-lg shadow-emerald-950/40"
+                                  : "bg-neutral-950/60 border-neutral-800 hover:border-neutral-700"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-white flex items-center gap-2">
+                                  <span
+                                    className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                                      directSplitOption === "SHORTFALL"
+                                        ? "border-emerald-400 bg-emerald-400"
+                                        : "border-neutral-600"
+                                    }`}
+                                  >
+                                    {directSplitOption === "SHORTFALL" && <Check className="w-2.5 h-2.5 text-black" />}
+                                  </span>
+                                  <span>Use Wallet + Pay Shortfall</span>
+                                </span>
+                                <span className="text-xs font-mono font-extrabold text-emerald-400">
+                                  ₹{neededAmount.toLocaleString("en-IN")}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-neutral-400 mt-1 pl-5.5 leading-snug">
+                                Deducts current wallet (₹{walletBalance.toLocaleString("en-IN")}) and pays the remaining shortfall online.
+                              </p>
+                            </div>
+
+                            {/* Option B: Full Amount */}
+                            <div
+                              onClick={() => setDirectSplitOption("FULL")}
+                              className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                                directSplitOption === "FULL"
+                                  ? "bg-emerald-950/30 border-emerald-500/60 shadow-lg shadow-emerald-950/40"
+                                  : "bg-neutral-950/60 border-neutral-800 hover:border-neutral-700"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-white flex items-center gap-2">
+                                  <span
+                                    className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                                      directSplitOption === "FULL"
+                                        ? "border-emerald-400 bg-emerald-400"
+                                        : "border-neutral-600"
+                                    }`}
+                                  >
+                                    {directSplitOption === "FULL" && <Check className="w-2.5 h-2.5 text-black" />}
+                                  </span>
+                                  <span>Pay Full via Razorpay</span>
+                                </span>
+                                <span className="text-xs font-mono font-extrabold text-white">
+                                  ₹{estimatedTotal.toLocaleString("en-IN")}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-neutral-400 mt-1 pl-5.5 leading-snug">
+                                Keeps your existing wallet balance (₹{walletBalance.toLocaleString("en-IN")}) safe for future bookings.
+                              </p>
+                            </div>
+                          </div>
                         </div>
+                      ) : (
+                        <div className="p-3.5 rounded-2xl bg-neutral-950/70 border border-neutral-800 text-xs flex items-center justify-between">
+                          <div className="flex items-center gap-2.5 text-neutral-300">
+                            <CreditCard className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                            <span>Direct 1-Click Online Payment via Razorpay</span>
+                          </div>
+                          <span className="font-mono font-extrabold text-white text-sm">
+                            ₹{estimatedTotal.toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Payment Channels Pill Badges */}
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <span className="text-[10px] uppercase font-bold text-neutral-500">Supported:</span>
+                        <span className="px-2 py-0.5 rounded-md bg-neutral-950 border border-neutral-800 text-[10px] text-neutral-300 font-medium">
+                          UPI (GPay / PhonePe / Paytm)
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-neutral-950 border border-neutral-800 text-[10px] text-neutral-300 font-medium">
+                          Domestic Cards (Visa, Mastercard, RuPay)
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-neutral-950 border border-neutral-800 text-[10px] text-neutral-300 font-medium">
+                          NetBanking
+                        </span>
                       </div>
+
+                      {/* Razorpay 1-Click Master Button */}
+                      {(() => {
+                        const chargeAmount =
+                          walletBalance > 0 && directSplitOption === "SHORTFALL"
+                            ? neededAmount
+                            : estimatedTotal;
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => handleDirectRazorpayPay(chargeAmount)}
+                            disabled={paying || initiatingHold || isHoldExpired || !booking}
+                            className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 hover:brightness-110 text-black font-extrabold text-sm transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {paying ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin text-black" />
+                                <span>Processing Online Payment &amp; Confirming...</span>
+                              </>
+                            ) : initiatingHold ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin text-black" />
+                                <span>Reserving Inventory Lock...</span>
+                              </>
+                            ) : (
+                              <>
+                                <CreditCard className="w-4 h-4" />
+                                <span>
+                                  Pay ₹{chargeAmount.toLocaleString("en-IN")} via Razorpay &amp; Confirm Booking
+                                </span>
+                              </>
+                            )}
+                          </button>
+                        );
+                      })()}
                     </div>
                   )}
 
                   {payError && (
-                    <div className="p-3 rounded-xl bg-red-950/40 border border-red-800 text-xs text-red-400 flex items-center gap-2">
+                    <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-800 text-xs text-red-400 flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 flex-shrink-0" />
                       <span>{payError}</span>
                     </div>
                   )}
 
-                  {/* Master Confirm & Pay Button */}
-                  <button
-                    type="button"
-                    onClick={handleConfirmPayment}
-                    disabled={
-                      paying ||
-                      initiatingHold ||
-                      isHoldExpired ||
-                      !booking ||
-                      walletBalance < estimatedTotal
-                    }
-                    className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 hover:brightness-110 text-black font-extrabold text-sm transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {paying ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin text-black" />
-                        <span>Deducting Wallet &amp; Confirming...</span>
-                      </>
-                    ) : initiatingHold ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin text-black" />
-                        <span>Reserving Inventory Lock...</span>
-                      </>
-                    ) : walletBalance < estimatedTotal ? (
-                      <>
-                        <AlertTriangle className="w-4 h-4 text-black" />
-                        <span>Insufficient Wallet Balance — Top Up First</span>
-                      </>
-                    ) : (
-                      <>
-                        <Wallet className="w-4 h-4" />
-                        <span>Confirm &amp; Pay ₹{estimatedTotal.toLocaleString("en-IN")} from Wallet</span>
-                      </>
-                    )}
-                  </button>
+                  {/* Informative Instant Refund Guarantee Box */}
+                  <div className="p-3.5 rounded-2xl bg-neutral-950/90 border border-neutral-800/80 text-[11px] text-neutral-400 space-y-1">
+                    <div className="flex items-center gap-1.5 text-neutral-200 font-bold">
+                      <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>ShiftDrive Instant Refund Policy</span>
+                    </div>
+                    <p className="leading-relaxed">
+                      All booking payments (whether via Razorpay or Wallet) are backed by our{" "}
+                      <strong className="text-neutral-300">Instant Wallet Refund Policy</strong>. In case of cancellation or schedule modification, refunds are deposited 100% instantly into your ShiftDrive Wallet balance with zero banking delays.
+                    </p>
+                  </div>
                 </div>
               </>
             )}

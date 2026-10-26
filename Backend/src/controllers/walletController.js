@@ -81,9 +81,55 @@ const getHistory = async (req, res) => {
     }
 };
 
+const createRazorpayOrder = async (req, res) => {
+    try {
+        const userId = req.user.userId || req.user.id;
+        const { amount } = req.body;
+
+        if (!amount) {
+            return res.status(400).json({ message: "Amount is required" });
+        }
+
+        const result = await walletService.createRazorpayOrder(userId, amount);
+        return res.status(200).json({ success: true, data: result });
+    } catch (error) {
+        const statusCode = error.statusCode || 500;
+        return res.status(statusCode).json({ message: error.message });
+    }
+};
+
+const verifyRazorpayPayment = async (req, res) => {
+    try {
+        const userId = req.user.userId || req.user.id;
+        const { orderId, paymentId, signature, amount } = req.body;
+
+        if (!orderId || !amount) {
+            return res.status(400).json({ message: "orderId and amount are required" });
+        }
+
+        const result = await walletService.verifyRazorpayPayment(userId, {
+            orderId,
+            paymentId,
+            signature,
+            amount,
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: result.message,
+            data: result,
+        });
+    } catch (error) {
+        const statusCode = error.statusCode || 500;
+        return res.status(statusCode).json({ message: error.message });
+    }
+};
+
 module.exports = {
+    createRazorpayOrder,
+    verifyRazorpayPayment,
     mockTopup,
     manualTopup,
     chargePenalty,
-    getHistory
+    getHistory,
 };
