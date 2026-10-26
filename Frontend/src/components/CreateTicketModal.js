@@ -61,7 +61,7 @@ export default function CreateTicketModal({
       console.error("Support ticket error:", err);
       setError(
         err.response?.data?.message ||
-          "Failed to submit support ticket. Please check your connection and try again."
+          "Failed to submit support ticket. Please check your connection and try again.",
       );
     } finally {
       setLoading(false);
@@ -94,7 +94,8 @@ export default function CreateTicketModal({
                 </span>
               </h2>
               <p className="text-xs text-neutral-400">
-                ShiftDrive AI will analyze your issue and provide an instant verified resolution.
+                ShiftDrive AI will analyze your issue and provide an instant
+                verified resolution.
               </p>
             </div>
           </div>
@@ -114,10 +115,12 @@ export default function CreateTicketModal({
               <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
               <div>
                 <strong className="text-white block text-sm">
-                  Ticket #{createdTicket.ticketId.slice(0, 8)} Created Successfully
+                  Ticket #{createdTicket.ticketId.slice(0, 8)} Created
+                  Successfully
                 </strong>
                 <p className="text-emerald-300/90 text-[11px] mt-0.5">
-                  A copy of this AI resolution and ticket confirmation has been dispatched to your registered email address.
+                  A copy of this AI resolution and ticket confirmation has been
+                  dispatched to your registered email address.
                 </p>
               </div>
             </div>
@@ -170,10 +173,18 @@ export default function CreateTicketModal({
                   required
                 >
                   <option value="GENERAL">General Inquiry</option>
-                  <option value="BILLING_REFUND">Billing, Deposit &amp; Wallet Refund</option>
-                  <option value="VEHICLE_ISSUE">Vehicle Condition &amp; On-Road Support</option>
-                  <option value="BOOKING_CHANGE">Booking Schedule &amp; Modifications</option>
-                  <option value="KYC_VERIFICATION">KYC &amp; Driving License Verification</option>
+                  <option value="BILLING_REFUND">
+                    Billing, Deposit &amp; Wallet Refund
+                  </option>
+                  <option value="VEHICLE_ISSUE">
+                    Vehicle Condition &amp; On-Road Support
+                  </option>
+                  <option value="BOOKING_CHANGE">
+                    Booking Schedule &amp; Modifications
+                  </option>
+                  <option value="KYC_VERIFICATION">
+                    KYC &amp; Driving License Verification
+                  </option>
                 </select>
               </div>
 

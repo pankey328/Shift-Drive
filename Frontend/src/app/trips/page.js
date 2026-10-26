@@ -97,6 +97,12 @@ function TripsDashboardContent() {
   const [cancelMessage, setCancelMessage] = useState("");
   const [cancelError, setCancelError] = useState("");
 
+  // Running Late Modal State
+  const [runningLateBooking, setRunningLateBooking] = useState(null);
+  const [submittingRunningLate, setSubmittingRunningLate] = useState(false);
+  const [runningLateMessage, setRunningLateMessage] = useState("");
+  const [runningLateError, setRunningLateError] = useState("");
+
   // Emergency Incident Reporting State
   const [reportingEmergency, setReportingEmergency] = useState(null);
   const [submittingEmergency, setSubmittingEmergency] = useState(false);
@@ -168,7 +174,7 @@ function TripsDashboardContent() {
     }
   }, [user?.wallet_balance]);
 
-  // Handle Trip Cancellation with 100% Wallet Refund
+  // Handle Trip Cancellation with Tiered Wallet Refund
   const handleConfirmCancel = async () => {
     if (!cancellingBooking) return;
 
@@ -182,7 +188,10 @@ function TripsDashboardContent() {
       });
 
       if (res.data?.success) {
-        setCancelMessage("Booking cancelled successfully! 100% of the payment has been refunded to your ShiftDrive Wallet.");
+        setCancelMessage(
+          res.data.message ||
+            "Booking cancelled successfully. Wallet refund has been credited."
+        );
         await fetchBookings();
         await fetchWalletBalance();
 
@@ -190,13 +199,46 @@ function TripsDashboardContent() {
           setCancellingBooking(null);
           setCancelReason("");
           setCancelMessage("");
-        }, 2000);
+        }, 2500);
       }
     } catch (err) {
       console.error("Cancellation error:", err.response?.data || err.message);
       setCancelError(err.response?.data?.message || "Failed to cancel booking. Please try again.");
     } finally {
       setSubmittingCancel(false);
+    }
+  };
+
+  // Handle Running Late / Hold for Next-Day Pickup
+  const handleConfirmRunningLate = async () => {
+    if (!runningLateBooking) return;
+
+    setSubmittingRunningLate(true);
+    setRunningLateError("");
+    setRunningLateMessage("");
+
+    try {
+      const res = await api.post(`/bookings/${runningLateBooking.bookingId}/running-late`);
+
+      if (res.data?.success) {
+        setRunningLateMessage(
+          res.data.message ||
+            "Vehicle successfully held for next-day pickup! Station team notified."
+        );
+        await fetchBookings();
+
+        setTimeout(() => {
+          setRunningLateBooking(null);
+          setRunningLateMessage("");
+        }, 2500);
+      }
+    } catch (err) {
+      console.error("Running late error:", err.response?.data || err.message);
+      setRunningLateError(
+        err.response?.data?.message || "Failed to notify station. Please contact support."
+      );
+    } finally {
+      setSubmittingRunningLate(false);
     }
   };
 
@@ -628,19 +670,36 @@ function TripsDashboardContent() {
 
                         {/* Self Cancellation (Upcoming) */}
                         {canCancel && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCancellingBooking(trip);
-                              setCancelError("");
-                              setCancelMessage("");
-                              setCancelReason("");
-                            }}
-                            className="flex-1 md:flex-initial py-2 px-3 rounded-xl bg-red-950/30 hover:bg-red-900/40 border border-red-800/40 text-xs font-bold text-red-400 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Cancel & Refund</span>
-                          </button>
+                          <>
+                            {!trip.is_delayed_pickup && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRunningLateBooking(trip);
+                                  setRunningLateError("");
+                                  setRunningLateMessage("");
+                                }}
+                                className="flex-1 md:flex-initial py-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-bold text-amber-400 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                <span>I'm Running Late</span>
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCancellingBooking(trip);
+                                setCancelError("");
+                                setCancelMessage("");
+                                setCancelReason("");
+                              }}
+                              className="flex-1 md:flex-initial py-2 px-3 rounded-xl bg-red-950/30 hover:bg-red-900/40 border border-red-800/40 text-xs font-bold text-red-400 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Cancel & Refund</span>
+                            </button>
+                          </>
                         )}
 
                         {/* Roadside Emergency Reporting (Active Trip) */}
@@ -727,6 +786,19 @@ function TripsDashboardContent() {
                               <span>₹1,000 Inconvenience Credit Credited to Wallet</span>
                             </div>
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Delayed Pickup Next-Day Hold Banner */}
+                    {trip.is_delayed_pickup && trip.status === "CONFIRMED" && (
+                      <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/40 flex items-start gap-3 text-xs text-emerald-300">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-white block">Next-Day Station Pickup Confirmed</span>
+                          <span className="text-[11px] text-emerald-200/90 block mt-0.5">
+                            Your vehicle is locked on the lot and reserved for next-day pickup at <strong>{pickupHub.name || "the station"}</strong> starting at {pickupHub.opening_time ? pickupHub.opening_time.slice(0, 5) : "08:00 AM"}. Scheduled rental dates and total pricing remain unchanged.
+                          </span>
                         </div>
                       </div>
                     )}
@@ -852,91 +924,218 @@ function TripsDashboardContent() {
       )}
 
       {/* CANCELLATION CONFIRMATION MODAL */}
-      {cancellingBooking && (
+      {cancellingBooking && (() => {
+        const pickupClose = cancellingBooking.PickupHub?.closing_time || "20:00:00";
+        const [closeH, closeM] = pickupClose.split(":").map(Number);
+        const startDate = new Date(cancellingBooking.start_time);
+        const hubCloseOnPickup = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth(),
+          startDate.getDate(),
+          closeH || 20,
+          closeM || 0,
+          0
+        );
+        const isPastHubClose = Date.now() > hubCloseOnPickup.getTime();
+        const totalPaid = parseFloat(cancellingBooking.total_price || 0);
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="max-w-md w-full rounded-3xl bg-neutral-900 border border-red-800/40 p-6 space-y-5 shadow-2xl">
+              <div className="flex items-center gap-3 text-red-400">
+                <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Cancel Reservation?</h3>
+                  <span className="text-xs text-neutral-400">
+                    Ref: {cancellingBooking.bookingId.slice(0, 8)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-2 text-xs">
+                <div className="flex justify-between text-neutral-400">
+                  <span>Vehicle:</span>
+                  <span className="text-white font-semibold">
+                    {cancellingBooking.Vehicle?.make} {cancellingBooking.Vehicle?.model}
+                  </span>
+                </div>
+
+                {!isPastHubClose ? (
+                  <>
+                    <div className="flex justify-between text-neutral-400">
+                      <span>100% Refund Amount:</span>
+                      <span className="text-emerald-400 font-bold font-mono">
+                        + ₹{totalPaid.toLocaleString("en-IN")}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-neutral-400 pt-1 border-t border-neutral-900 leading-relaxed">
+                      You are cancelling prior to station closing time ({pickupClose.slice(0, 5)}). 100% of your payment will be immediately credited to your ShiftDrive Wallet.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-neutral-400">
+                      <span>Original Paid:</span>
+                      <span className="text-white font-bold font-mono">
+                        ₹{totalPaid.toLocaleString("en-IN")}
+                      </span>
+                    </div>
+
+                    <div className="pt-2 border-t border-amber-900/40 text-[11px] text-amber-300/90 leading-relaxed space-y-1">
+                      <div className="font-semibold text-amber-200">Prorated Refund Policy Active:</div>
+                      <p>
+                        Because station closing on your scheduled pickup date has passed, elapsed day(s) during which the vehicle was held will be deducted at the daily rate, and the remaining unused balance will be credited to your wallet.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {cancelMessage && (
+                <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-xs text-emerald-400 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>{cancelMessage}</span>
+                </div>
+              )}
+
+              {cancelError && (
+                <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/40 text-xs text-red-400 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>{cancelError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-neutral-300">
+                  Reason for Cancellation (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Change of travel plans, flight reschedule..."
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-red-500 resize-none"
+                ></textarea>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCancellingBooking(null)}
+                  disabled={submittingCancel}
+                  className="flex-1 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Keep Booking
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleConfirmCancel}
+                  disabled={submittingCancel}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {submittingCancel ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Processing Refund...</span>
+                    </>
+                  ) : (
+                    <span>Confirm Cancellation</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* RUNNING LATE / NEXT-DAY PICKUP CONFIRMATION MODAL */}
+      {runningLateBooking && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="max-w-md w-full rounded-3xl bg-neutral-900 border border-red-800/40 p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center gap-3 text-red-400">
-              <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-                <RotateCcw className="w-5 h-5" />
+          <div className="max-w-md w-full rounded-3xl bg-neutral-900 border border-amber-500/30 p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center gap-3 text-amber-400">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                <Clock className="w-5 h-5 text-amber-400" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Cancel Reservation?</h3>
+                <h3 className="text-base font-bold text-white">Running Late?</h3>
                 <span className="text-xs text-neutral-400">
-                  Ref: {cancellingBooking.bookingId.slice(0, 8)}
+                  Ref: {runningLateBooking.bookingId.slice(0, 8)}
                 </span>
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-2 text-xs">
+            <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-3 text-xs">
               <div className="flex justify-between text-neutral-400">
-                <span>Vehicle:</span>
+                <span>Pickup Station:</span>
                 <span className="text-white font-semibold">
-                  {cancellingBooking.Vehicle?.make} {cancellingBooking.Vehicle?.model}
+                  {runningLateBooking.PickupHub?.name || "Station"}
                 </span>
               </div>
 
               <div className="flex justify-between text-neutral-400">
-                <span>100% Refund Amount:</span>
+                <span>Tomorrow's Station Opening:</span>
                 <span className="text-emerald-400 font-bold font-mono">
-                  + ₹{parseFloat(cancellingBooking.total_price || 0).toLocaleString("en-IN")}
+                  {runningLateBooking.PickupHub?.opening_time
+                    ? runningLateBooking.PickupHub.opening_time.slice(0, 5)
+                    : "08:00 AM"}
                 </span>
               </div>
 
-              <p className="text-[11px] text-neutral-500 pt-1 border-t border-neutral-900">
-                The entire amount will be immediately credited back to your ShiftDrive Wallet balance.
-              </p>
+              <div className="pt-2 border-t border-neutral-900 space-y-1.5 text-[11px] text-neutral-400">
+                <span className="font-semibold text-white block">Next-Day Pickup Terms:</span>
+                <ul className="list-disc list-inside space-y-1 text-neutral-400">
+                  <li>Your vehicle will remain locked and held exclusively for you on the station lot.</li>
+                  <li>
+                    No refund is provided for elapsed hours or the missed day; original reservation dates & total pricing remain unchanged.
+                  </li>
+                  <li>
+                    If you wish to change your dates entirely, please cancel this booking and book again for your revised dates.
+                  </li>
+                </ul>
+              </div>
             </div>
 
-            {cancelMessage && (
+            {runningLateMessage && (
               <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-xs text-emerald-400 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                <span>{cancelMessage}</span>
+                <span>{runningLateMessage}</span>
               </div>
             )}
 
-            {cancelError && (
+            {runningLateError && (
               <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/40 text-xs text-red-400 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                <span>{cancelError}</span>
+                <span>{runningLateError}</span>
               </div>
             )}
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-neutral-300">
-                Reason for Cancellation (Optional)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Change of travel plans, flight reschedule..."
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-red-500 resize-none"
-              ></textarea>
-            </div>
 
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setCancellingBooking(null)}
-                disabled={submittingCancel}
+                onClick={() => setRunningLateBooking(null)}
+                disabled={submittingRunningLate}
                 className="flex-1 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors cursor-pointer"
               >
-                Keep Booking
+                Close
               </button>
 
               <button
                 type="button"
-                onClick={handleConfirmCancel}
-                disabled={submittingCancel}
-                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                onClick={handleConfirmRunningLate}
+                disabled={submittingRunningLate}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-md shadow-amber-500/20"
               >
-                {submittingCancel ? (
+                {submittingRunningLate ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Processing Refund...</span>
+                    <span>Notifying Station...</span>
                   </>
                 ) : (
-                  <span>Confirm Cancellation</span>
+                  <span>Hold for Tomorrow</span>
                 )}
               </button>
             </div>

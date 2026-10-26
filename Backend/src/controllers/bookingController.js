@@ -193,17 +193,41 @@ const cancelBooking = async (req, res) => {
     const { bookingId } = req.params;
     const { cancellationReason } = req.body;
 
-    const cancelledBooking = await bookingService.cancelCustomerBooking(
+    const result = await bookingService.cancelCustomerBooking(
       userId,
       bookingId,
       { cancellationReason }
     );
 
+    const message = result.isProrated
+      ? `Booking cancelled. Prorated refund of ₹${result.refundAmount.toFixed(2)} credited to your wallet (₹${result.deductedAmount.toFixed(2)} deducted for elapsed days).`
+      : "Booking cancelled successfully. 100% of your payment has been refunded to your wallet.";
+
     return res.status(200).json({
       success: true,
-      message:
-        "Booking cancelled successfully. Any payments have been refunded to your wallet.",
-      data: cancelledBooking,
+      message,
+      data: result.booking,
+      refundAmount: result.refundAmount,
+      isProrated: result.isProrated,
+      deductedAmount: result.deductedAmount,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+const markRunningLateController = async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const { bookingId } = req.params;
+
+    const result = await bookingService.markRunningLate(userId, bookingId);
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.booking,
     });
   } catch (error) {
     const statusCode = error.statusCode || 500;
@@ -222,6 +246,7 @@ module.exports = {
   getUserBookings,
   getBookingDetails,
   cancelBooking,
+  markRunningLateController,
 };
 
 

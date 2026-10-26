@@ -63,12 +63,12 @@ const findBookingByIdWithDetails = async (bookingId) => {
       {
         model: Hub,
         as: "PickupHub",
-        attributes: ["hubId", "name", "city", "address"],
+        attributes: ["hubId", "name", "city", "address", "opening_time", "closing_time"],
       },
       {
         model: Hub,
         as: "DropoffHub",
-        attributes: ["hubId", "name", "city", "address"],
+        attributes: ["hubId", "name", "city", "address", "opening_time", "closing_time"],
       },
     ],
   });

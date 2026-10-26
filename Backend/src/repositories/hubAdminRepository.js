@@ -21,9 +21,19 @@ const getDailySchedule = async (hubId, startOfDay, endOfDay, now) => {
       where: {
         pickup_hub_id: hubId,
         status: "CONFIRMED",
-        start_time: {
-          [Op.between]: [startOfDay, endOfDay],
-        },
+        [Op.or]: [
+          {
+            start_time: {
+              [Op.between]: [startOfDay, endOfDay],
+            },
+          },
+          {
+            is_delayed_pickup: true,
+            end_time: {
+              [Op.gt]: now,
+            },
+          },
+        ],
       },
       include: [
         {

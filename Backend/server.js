@@ -14,6 +14,8 @@ const hubAdminRoutes = require("./src/routes/hubAdminRoutes");
 const supportRoutes = require("./src/routes/supportRoutes");
 const startBookingCron = require("./src/cron/ghostBookingCron");
 const startLateReturnCron = require("./src/cron/lateReturnCron");
+const startNoShowCron = require("./src/cron/noShowCron");
+const { DataTypes } = require("sequelize");
 
 const app = express();
 
@@ -77,12 +79,36 @@ const startServer = async () => {
     await sequelize.sync();
     console.log("Database synchronized successfully");
 
+    // Safe column check for bookings table
+    try {
+      const queryInterface = sequelize.getQueryInterface();
+      const tableDesc = await queryInterface.describeTable("bookings");
+      if (!tableDesc.is_delayed_pickup) {
+        await queryInterface.addColumn("bookings", "is_delayed_pickup", {
+          type: DataTypes.BOOLEAN,
+          defaultValue: false,
+        });
+        console.log("Added is_delayed_pickup column to bookings table");
+      }
+      if (!tableDesc.delayed_pickup_notified_at) {
+        await queryInterface.addColumn("bookings", "delayed_pickup_notified_at", {
+          type: DataTypes.DATE,
+          allowNull: true,
+        });
+        console.log("Added delayed_pickup_notified_at column to bookings table");
+      }
+    } catch (colErr) {
+      console.warn("Table description check notice:", colErr.message);
+    }
 
     startBookingCron();
     console.log("Booking Cron jobs initialized");
 
     startLateReturnCron();
     console.log("Late Return Cron jobs initialized");
+
+    startNoShowCron();
+    console.log("No-Show Cron jobs initialized");
 
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

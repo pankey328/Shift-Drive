@@ -47,6 +47,13 @@ Your mission is to provide clear, polite, concise, and 100% accurate information
 10. ONE-WAY RENTALS:
    - Customers can pick up at one hub and return at another participating hub in the network. A calculated relocation fee is included in the transparent checkout breakdown.
 
+11. DELAYED PICKUP, NO-SHOW & CANCELLATION POLICIES:
+   - Running Late / Next-Day Pickup: If a customer cannot collect their car before station closing, they can tap "I'm Running Late" on their Trips dashboard. The vehicle will remain held on the lot for next-day pickup starting from morning station opening hours. The scheduled rental dates and total pricing remain unchanged with no refund for elapsed hours. To shift the full rental dates, customers should cancel and book again.
+   - Timely Cancellation: If a booking is cancelled before the station closing time on the scheduled pickup date, a 100% FULL REFUND is credited to the customer's ShiftDrive Wallet.
+   - Delayed Cancellation: If cancelled after station closing or on subsequent days, a prorated refund is provided (elapsed days are deducted at the daily rental rate, and the remaining unused days are refunded).
+   - Silent No-Show: If a customer does not pick up their vehicle before station closing and did not tap "I'm Running Late", the system automatically cancels the reservation, deducts a ₹1,000 penalty, refunds the remaining balance to their wallet, and frees the vehicle for other customers.
+   - Expired Delayed Reservation: If a customer taps "I'm Running Late" but never collects the vehicle before the booking end date/time, the reservation expires with ₹0 refund because the car was reserved exclusively on their behalf.
+
 ### Behavioral & Formatting Rules (CRITICAL):
 - Answer politely, concisely, and factually.
 - Do NOT hallucinate rules or offer unofficial discounts/refunds outside of ShiftDrive platform policies.
@@ -77,9 +84,24 @@ const PREDEFINED_FAQS = [
       "We follow a Same-to-Same Fair Fuel Policy. Please return the vehicle with the same fuel level as recorded during your pickup inspection.",
   },
   {
-    keywords: ["late", "delay", "penalty", "return late", "extend"],
+    keywords: ["late return", "return late", "late fee", "overdue return"],
     answer:
       "Late returns are billed at a penalty of ₹1,000 per hour to protect upcoming customer reservations. If you anticipate a delay, please contact your hub manager or use your trips dashboard.",
+  },
+  {
+    keywords: ["running late", "delayed pickup", "late pickup", "cant pick up", "cant collect"],
+    answer:
+      "If you are running late and cannot reach the station before closing time, tap 'I'm Running Late' on your Trips dashboard. Your vehicle will be held for next-day pickup at morning opening hours. Note: Original booking dates and total pricing remain unchanged with no refund for elapsed hours. To change your dates entirely, please cancel and rebook.",
+  },
+  {
+    keywords: ["no show", "missed pickup", "didnt pickup", "didn't pick up"],
+    answer:
+      "If you fail to collect your car before station closing without notifying via 'I'm Running Late', the system automatically cancels your booking, deducts a ₹1,000 no-show fee, and refunds the remaining balance to your wallet.",
+  },
+  {
+    keywords: ["cancel refund", "cancellation policy", "cancel booking", "refund on cancel"],
+    answer:
+      "If you cancel before the station closing time on your pickup date, you receive a 100% full refund to your ShiftDrive Wallet. If you cancel later or on subsequent days, a prorated refund is issued where elapsed days are deducted at the daily rate, and the remaining unused balance is refunded.",
   },
   {
     keywords: ["hub hours", "operating hours", "timing", "open", "close"],
@@ -375,4 +397,5 @@ module.exports = {
   generateChatResponse,
   checkInstantFaq,
   PREDEFINED_FAQS,
+  SHIFTDRIVE_KNOWLEDGE_BASE,
 };

@@ -415,7 +415,7 @@ const fetchUserBookingDetails = async (userId, userRole, bookingId) => {
 };
 
 const cancelCustomerBooking = async (userId, bookingId, { cancellationReason } = {}) => {
-  const booking = await findBookingById(bookingId);
+  const booking = await findBookingByIdWithDetails(bookingId);
   if (!booking) {
     const error = new Error("Booking not found");
     error.statusCode = 404;
@@ -444,17 +444,56 @@ const cancelCustomerBooking = async (userId, bookingId, { cancellationReason } =
     throw error;
   }
 
-  // If booking was CONFIRMED (charged), refund full amount back to user wallet
+  let refundAmount = 0;
+  let isProrated = false;
+  let deductedAmount = 0;
+
+  // If booking was CONFIRMED (charged), evaluate refund policy based on hub close time
   if (booking.status === "CONFIRMED") {
-    const refundAmount = parseFloat(booking.total_price);
-    if (refundAmount > 0) {
-      await processFinancialMovement({
-        userId,
-        amount: Math.abs(refundAmount),
-        type: "REFUND",
-        description: `Customer cancellation refund for Booking ID: ${bookingId}`,
-        bookingId,
-      });
+    const pickupHub = booking.PickupHub || (await hubRepository.findHubById(booking.pickup_hub_id));
+    const startTime = new Date(booking.start_time);
+    const [closeH, closeM] = (pickupHub?.closing_time || "20:00:00").split(":").map(Number);
+    const hubCloseOnPickupDate = new Date(
+      startTime.getFullYear(),
+      startTime.getMonth(),
+      startTime.getDate(),
+      closeH || 20,
+      closeM || 0,
+      0
+    );
+
+    if (Date.now() <= hubCloseOnPickupDate.getTime()) {
+      // Cancelled before hub close time on pickup date: 100% full refund
+      refundAmount = parseFloat(booking.total_price);
+      if (refundAmount > 0) {
+        await processFinancialMovement({
+          userId,
+          amount: Math.abs(refundAmount),
+          type: "REFUND",
+          description: `Customer cancellation before station closing (100% refund) for Booking ID: ${bookingId.slice(0, 8)}`,
+          bookingId,
+        });
+      }
+    } else {
+      // Cancelled after hub close time on pickup date / subsequent days: Prorated refund based on elapsed days
+      isProrated = true;
+      const now = Date.now();
+      const elapsedMs = Math.max(0, now - startTime.getTime());
+      const elapsedDays = Math.max(1, Math.ceil(elapsedMs / (1000 * 60 * 60 * 24)));
+      const totalDays = Math.max(1, differenceInDays(new Date(booking.end_time), startTime) || 1);
+      const dailyRate = parseFloat(booking.total_price) / totalDays;
+      deductedAmount = Math.min(parseFloat(booking.total_price), elapsedDays * dailyRate);
+      refundAmount = Math.max(0, parseFloat(booking.total_price) - deductedAmount);
+
+      if (refundAmount > 0) {
+        await processFinancialMovement({
+          userId,
+          amount: Math.abs(refundAmount),
+          type: "REFUND",
+          description: `Prorated cancellation refund (${elapsedDays} day(s) deducted: ₹${deductedAmount.toFixed(2)}) for Booking ID: ${bookingId.slice(0, 8)}`,
+          bookingId,
+        });
+      }
     }
   }
 
@@ -466,10 +505,166 @@ const cancelCustomerBooking = async (userId, bookingId, { cancellationReason } =
     }
   }
 
-  return await cancelBookingByCustomer(
+  const defaultReason = isProrated
+    ? `Customer cancelled after station close. Prorated refund: ₹${refundAmount.toFixed(2)} (Deducted ₹${deductedAmount.toFixed(2)} for elapsed time).`
+    : "Customer cancelled before station closing (100% refund).";
+
+  const updatedBooking = await cancelBookingByCustomer(
     bookingId,
-    cancellationReason || "Cancelled by customer before trip start"
+    cancellationReason || defaultReason
   );
+
+  // Send cancellation email to customer
+  if (booking.Customer?.email) {
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; rounded: 8px;">
+        <h2 style="color: #dc2626;">ShiftDrive: Reservation Cancelled</h2>
+        <p>Hello <strong>${booking.Customer.name || "Customer"}</strong>,</p>
+        <p>Your reservation for <strong>${booking.Vehicle?.make || ""} ${booking.Vehicle?.model || ""}</strong> has been successfully cancelled.</p>
+        
+        <div style="background-color: #f8fafc; border-left: 4px solid ${isProrated ? "#f59e0b" : "#16a34a"}; padding: 12px; margin: 16px 0;">
+          <p style="margin: 4px 0;"><strong>Original Booking Amount:</strong> ₹${parseFloat(booking.total_price).toFixed(2)}</p>
+          ${isProrated ? `<p style="margin: 4px 0; color: #dc2626;"><strong>Elapsed Days Deduction:</strong> ₹${deductedAmount.toFixed(2)}</p>` : ""}
+          <p style="margin: 4px 0; color: #16a34a; font-size: 16px;"><strong>Wallet Refund Credited:</strong> ₹${refundAmount.toFixed(2)}</p>
+        </div>
+        
+        <p>The refunded amount is immediately available in your ShiftDrive Wallet balance.</p>
+        <p style="color: #64748b; font-size: 12px; margin-top: 24px;">ShiftDrive Mobility Operations Command</p>
+      </div>
+    `;
+    try {
+      await sendMail(
+        booking.Customer.email,
+        `ShiftDrive: Reservation Cancelled - Refund Notice (#${bookingId.slice(0, 8)})`,
+        emailHtml
+      );
+    } catch (err) {
+      console.error("Failed to send cancellation email:", err.message);
+    }
+  }
+
+  return {
+    booking: updatedBooking,
+    refundAmount,
+    isProrated,
+    deductedAmount,
+  };
+};
+
+const markRunningLate = async (userId, bookingId) => {
+  const booking = await findBookingByIdWithDetails(bookingId);
+  if (!booking) {
+    const error = new Error("Booking not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (booking.user_id !== userId) {
+    const error = new Error("You are not authorized to update this booking.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (booking.status !== "CONFIRMED") {
+    const error = new Error(
+      `Only upcoming confirmed bookings can be marked for delayed pickup (current status: ${booking.status}).`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (booking.is_delayed_pickup) {
+    return {
+      booking,
+      message: "Delayed next-day pickup is already confirmed for this reservation.",
+    };
+  }
+
+  const pickupHub = booking.PickupHub || (await hubRepository.findHubById(booking.pickup_hub_id));
+  const startTime = new Date(booking.start_time);
+  const [closeH, closeM] = (pickupHub?.closing_time || "20:00:00").split(":").map(Number);
+  const hubCloseOnPickupDate = new Date(
+    startTime.getFullYear(),
+    startTime.getMonth(),
+    startTime.getDate(),
+    closeH || 20,
+    closeM || 0,
+    0
+  );
+
+  // If station closing on scheduled pickup date has already passed
+  if (Date.now() > hubCloseOnPickupDate.getTime()) {
+    const error = new Error(
+      `Station closing time (${pickupHub?.closing_time?.slice(0, 5) || "closing"}) on your pickup date has already passed. Please contact station support.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Check if booking has at least multi-day duration spanning into tomorrow morning
+  const [openH, openM] = (pickupHub?.opening_time || "08:00:00").split(":").map(Number);
+  const nextDayOpening = new Date(
+    startTime.getFullYear(),
+    startTime.getMonth(),
+    startTime.getDate() + 1,
+    openH || 8,
+    openM || 0,
+    0
+  );
+
+  if (new Date(booking.end_time).getTime() <= nextDayOpening.getTime()) {
+    const error = new Error(
+      "Your reservation ends today before tomorrow's station opening. Next-day pickup is only valid for multi-day reservations. If your schedule changed, please cancel this booking and book for your new dates."
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Update booking record
+  booking.is_delayed_pickup = true;
+  booking.delayed_pickup_notified_at = new Date();
+  await booking.save();
+
+  // Send confirmation email
+  if (booking.Customer?.email) {
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; rounded: 8px;">
+        <h2 style="color: #059669;">ShiftDrive: Delayed Next-Day Pickup Confirmed</h2>
+        <p>Hello <strong>${booking.Customer.name || "Customer"}</strong>,</p>
+        <p>We received your <strong>Running Late</strong> notification for Booking <strong>#${(booking.bookingId || bookingId).slice(0, 8)}</strong>.</p>
+        
+        <div style="background-color: #f0fdf4; border-left: 4px solid #059669; padding: 12px; margin: 16px 0;">
+          <p style="margin: 4px 0;"><strong>Vehicle:</strong> ${booking.Vehicle?.make || ""} ${booking.Vehicle?.model || ""} (${booking.Vehicle?.plate_number || ""})</p>
+          <p style="margin: 4px 0;"><strong>Pickup Station:</strong> ${pickupHub?.name || "Station"}</p>
+          <p style="margin: 4px 0;"><strong>Tomorrow's Station Opening:</strong> ${pickupHub?.opening_time?.slice(0, 5) || "08:00 AM"}</p>
+        </div>
+        
+        <p><strong>Important Rental Policy Notes:</strong></p>
+        <ul style="color: #475569; font-size: 14px; line-height: 1.6;">
+          <li>Your vehicle will remain reserved exclusively for you on the station lot.</li>
+          <li>You may pick up your car anytime tomorrow starting from station opening hours.</li>
+          <li>In accordance with ShiftDrive policies, scheduled rental dates and total pricing remain identical without refund for elapsed hours.</li>
+          <li>If you wish to shift or reschedule the overall rental dates, please cancel this booking and book again for your revised dates.</li>
+        </ul>
+        
+        <p style="color: #64748b; font-size: 12px; margin-top: 24px;">ShiftDrive Mobility Operations Command</p>
+      </div>
+    `;
+    try {
+      await sendMail(
+        booking.Customer.email,
+        `ShiftDrive: Next-Day Vehicle Pickup Confirmed (#${(booking.bookingId || bookingId).slice(0, 8)})`,
+        emailHtml
+      );
+    } catch (err) {
+      console.error("Failed to send delayed pickup confirmation email:", err.message);
+    }
+  }
+
+  return {
+    booking,
+    message: `Vehicle will be held for next-day pickup starting at ${pickupHub?.opening_time?.slice(0, 5) || "station opening"}. Original rental dates and pricing remain unchanged.`,
+  };
 };
 
 module.exports = {
@@ -483,6 +678,7 @@ module.exports = {
   fetchUserBookings,
   fetchUserBookingDetails,
   cancelCustomerBooking,
+  markRunningLate,
 };
 
 

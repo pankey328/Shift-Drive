@@ -12,6 +12,7 @@ const {
   getUserBookings,
   getBookingDetails,
   cancelBooking,
+  markRunningLateController,
 } = require("../controllers/bookingController");
 
 router.use(protect);
@@ -28,6 +29,7 @@ router.get("/:bookingId", getBookingDetails);
 router.post("/initiate", authorize("CUSTOMER"), createBooking);
 router.post("/:bookingId/pay", authorize("CUSTOMER"), payForBooking);
 router.post("/:bookingId/cancel", authorize("CUSTOMER"), cancelBooking);
+router.post("/:bookingId/running-late", authorize("CUSTOMER"), markRunningLateController);
 router.post("/:bookingId/emergency", authorize("CUSTOMER"), reportEmergency);
 
 module.exports = router;

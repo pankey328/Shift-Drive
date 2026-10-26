@@ -771,9 +771,15 @@ export default function ManagerDispatchPage() {
                     <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md bg-neutral-800 text-neutral-400">
                       Ref: {booking.bookingId.slice(0, 8)}
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
-                      CONFIRMED
-                    </span>
+                    {booking.is_delayed_pickup ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 text-[10px] font-bold flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-amber-400" /> Next-Day Hold
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
+                        CONFIRMED
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-3">
@@ -808,13 +814,19 @@ export default function ManagerDispatchPage() {
                       <span className="text-white font-medium">{booking.Customer?.phone || "N/A"}</span>
                     </div>
                     <div className="flex justify-between text-neutral-400">
-                      <span>Handover Time:</span>
-                      <span className="text-emerald-400 font-semibold">
-                        {new Date(booking.start_time).toLocaleTimeString("en-IN", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
+                      <span>Handover:</span>
+                      {booking.is_delayed_pickup ? (
+                        <span className="text-amber-300 font-semibold flex items-center gap-1">
+                          Next-Day (Held on lot)
+                        </span>
+                      ) : (
+                        <span className="text-emerald-400 font-semibold">
+                          {new Date(booking.start_time).toLocaleTimeString("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      )}
                     </div>
 
                     {/* KYC Verification Badge */}

@@ -28,6 +28,14 @@ const Booking = sequelize.define(
     locked_until: { type: DataTypes.DATE, allowNull: true },
     incident_notes: { type: DataTypes.TEXT, allowNull: true },
     cancellation_reason: { type: DataTypes.STRING, allowNull: true },
+    is_delayed_pickup: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    delayed_pickup_notified_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   },
   {
     tableName: "bookings",
