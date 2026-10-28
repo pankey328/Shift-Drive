@@ -1,4 +1,5 @@
 const authService = require("../services/authService");
+const userRepository = require("../repositories/userRepository");
 
 // Login User /api/auth/login
 const login = async (req, res) => {
@@ -6,7 +7,7 @@ const login = async (req, res) => {
     const { password } = req.body;
     const email = req.body.email?.toLowerCase().trim();
 
-    if (!(email && password)) {
+    if (!email || !password) {
       return res
         .status(400)
         .json({ message: "Email and Password are required" });
@@ -50,7 +51,7 @@ const sendOtp = async (req, res) => {
     const { name, password, role } = req.body;
     const email = req.body.email?.toLowerCase().trim();
 
-    if (!(name && email && password)) {
+    if (!name || !email || !password) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
@@ -71,7 +72,7 @@ const verifyOtp = async (req, res) => {
     const { otp } = req.body;
     const email = req.body.email?.toLowerCase().trim();
 
-    if (!(email && otp)) {
+    if (!email || !otp) {
       return res.status(400).json({ message: "Email and OTP are required" });
     }
 
@@ -112,7 +113,7 @@ const verifyForget = async (req, res) => {
     const { otp, newpassword, confirmpassword } = req.body;
     const email = req.body.email?.toLowerCase().trim();
 
-    if (!(email && otp && newpassword && confirmpassword)) {
+    if (!email || !otp || !newpassword || !confirmpassword) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
@@ -138,7 +139,7 @@ const reset = async (req, res) => {
     const { password, newpassword, confirmpassword } = req.body;
     const email = req.body.email?.toLowerCase().trim();
 
-    if (!(email && password && newpassword && confirmpassword)) {
+    if (!email || !password || !newpassword || !confirmpassword) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
@@ -176,6 +177,7 @@ const getMe = async (req, res) => {
   }
 };
 
+// Register Hub Manager (Superadmin only) /api/auth/register-manager
 const registerHubManager = async (req, res) => {
   try {
     const { name, email, phone, hub_id } = req.body;
@@ -201,6 +203,7 @@ const registerHubManager = async (req, res) => {
   }
 };
 
+// Setup Permanent Password on First Login /api/auth/setup-password
 const setupPermanentPassword = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -218,6 +221,7 @@ const setupPermanentPassword = async (req, res) => {
   }
 };
 
+// Submit KYC Verification Documents /api/auth/kyc
 const submitKyc = async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
@@ -231,11 +235,11 @@ const submitKyc = async (req, res) => {
   }
 };
 
+// Update User Profile /api/auth/profile
 const updateProfile = async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
     const { name, phone } = req.body;
-    const userRepository = require("../repositories/userRepository");
     const user = await userRepository.findUserById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });

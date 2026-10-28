@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const sequelize = require("./src/dbconfig/db");
+
+// Route Handlers
 const authRoutes = require("./src/routes/authRoutes");
 const walletRoutes = require("./src/routes/walletRoutes");
 const hubRoutes = require("./src/routes/hubRoutes");
@@ -12,19 +14,19 @@ const analyticsRoutes = require("./src/routes/analyticsRoutes");
 const adminUserRoutes = require("./src/routes/adminUserRoutes");
 const hubAdminRoutes = require("./src/routes/hubAdminRoutes");
 const supportRoutes = require("./src/routes/supportRoutes");
+
+// Background Cron Jobs
 const startBookingCron = require("./src/cron/ghostBookingCron");
 const startLateReturnCron = require("./src/cron/lateReturnCron");
 const startNoShowCron = require("./src/cron/noShowCron");
-const { DataTypes } = require("sequelize");
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-const PORT = process.env.PORT || 5000;
 
 // Routes
 app.use("/api/auth", authRoutes);
@@ -60,6 +62,7 @@ app.use((err, req, res, next) => {
       message: err.message,
     });
   }
+
   if (err) {
     const status = err.status || err.statusCode || 400;
     return res.status(status).json({
@@ -67,6 +70,7 @@ app.use((err, req, res, next) => {
       message: err.message || "Failed to upload vehicle photos. Only JPG, JPEG, PNG, and WEBP formats are supported.",
     });
   }
+
   next();
 });
 
@@ -79,28 +83,7 @@ const startServer = async () => {
     await sequelize.sync();
     console.log("Database synchronized successfully");
 
-    // Safe column check for bookings table
-    try {
-      const queryInterface = sequelize.getQueryInterface();
-      const tableDesc = await queryInterface.describeTable("bookings");
-      if (!tableDesc.is_delayed_pickup) {
-        await queryInterface.addColumn("bookings", "is_delayed_pickup", {
-          type: DataTypes.BOOLEAN,
-          defaultValue: false,
-        });
-        console.log("Added is_delayed_pickup column to bookings table");
-      }
-      if (!tableDesc.delayed_pickup_notified_at) {
-        await queryInterface.addColumn("bookings", "delayed_pickup_notified_at", {
-          type: DataTypes.DATE,
-          allowNull: true,
-        });
-        console.log("Added delayed_pickup_notified_at column to bookings table");
-      }
-    } catch (colErr) {
-      console.warn("Table description check notice:", colErr.message);
-    }
-
+    // Start background automation cron jobs
     startBookingCron();
     console.log("Booking Cron jobs initialized");
 
@@ -119,3 +102,4 @@ const startServer = async () => {
 };
 
 startServer();
+

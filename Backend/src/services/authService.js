@@ -62,7 +62,7 @@ const loginUser = async ({ email, password }) => {
       success: true,
       requires_password_change: true,
       message: "Please set a permanent password to continue.",
-      token, 
+      token,
       user: {
         id: userExist.userId,
         userId: userExist.userId,
@@ -500,6 +500,7 @@ const resetPassword = async ({
   return { message: "Password changed successfully" };
 };
 
+// GET USER PROFILE SERVICE
 const getUserProfile = async (userId) => {
   const user = await userRepository.findUserById(userId);
   if (!user) {
@@ -510,6 +511,7 @@ const getUserProfile = async (userId) => {
   return user;
 };
 
+// REGISTER HUB MANAGER SERVICE
 const registerHubManager = async ({ name, email, phone, hub_id }) => {
   const hub = await hubRepository.findHubById(hub_id);
   if (!hub) {
@@ -564,9 +566,10 @@ const registerHubManager = async ({ name, email, phone, hub_id }) => {
   };
 };
 
+// SETUP PERMANENT PASSWORD SERVICE
 const setupPermanentPassword = async (userId, newPassword) => {
-  if (!newPassword || newPassword.length < 8) {
-    const error = new Error("Password must be at least 8 characters long.");
+  if (!newPassword || newPassword.length < 6) {
+    const error = new Error("Password must be at least 6 characters long.");
     error.statusCode = 400;
     throw error;
   }
@@ -590,6 +593,7 @@ const setupPermanentPassword = async (userId, newPassword) => {
   return { message: "Password updated successfully. Welcome to ShiftDrive!" };
 };
 
+// UPLOAD KYC DOCUMENT SERVICE
 const uploadKycDocument = async (userId, files) => {
   const user = await userRepository.findUserById(userId);
   if (!user || user.role !== "CUSTOMER") {

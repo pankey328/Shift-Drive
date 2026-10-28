@@ -657,8 +657,6 @@ function CheckoutContent() {
       console.error("Direct payment initiation error:", err.response?.data || err.message);
       setPayError(err.response?.data?.message || "Failed to initiate payment gateway.");
       setPaying(false);
-    } finally {
-      // In non-modal branches, ensure paying is stopped if done
     }
   };
 
@@ -929,11 +927,10 @@ function CheckoutContent() {
             <button
               type="button"
               onClick={handleBackToReview}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                checkoutStage === "REVIEW"
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${checkoutStage === "REVIEW"
                   ? "bg-emerald-500 text-black shadow-md shadow-emerald-500/20"
                   : "text-neutral-400 hover:text-white"
-              }`}
+                }`}
             >
               <span className="w-4 h-4 rounded-full bg-black/20 flex items-center justify-center text-[10px]">1</span>
               <span>Trip Details</span>
@@ -942,11 +939,10 @@ function CheckoutContent() {
             <button
               type="button"
               disabled={checkoutStage === "REVIEW"}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
-                checkoutStage === "PAYMENT"
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 ${checkoutStage === "PAYMENT"
                   ? "bg-emerald-500 text-black shadow-md shadow-emerald-500/20"
                   : "text-neutral-500 cursor-not-allowed"
-              }`}
+                }`}
             >
               <span className="w-4 h-4 rounded-full bg-black/20 flex items-center justify-center text-[10px]">2</span>
               <span>Payment</span>
@@ -1309,11 +1305,10 @@ function CheckoutContent() {
                   {/* Calm 5-Minute Hold Timer */}
                   {booking && (
                     <div
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs ${
-                        isHoldExpired
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs ${isHoldExpired
                           ? "bg-red-950/40 border-red-800 text-red-400"
                           : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                      }`}
+                        }`}
                     >
                       <Lock className="w-3.5 h-3.5" />
                       <span className="font-semibold">
@@ -1364,20 +1359,18 @@ function CheckoutContent() {
                     <button
                       type="button"
                       onClick={() => setPaymentMethod("WALLET")}
-                      className={`py-3 px-3 rounded-xl text-xs font-bold transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 cursor-pointer ${
-                        paymentMethod === "WALLET"
+                      className={`py-3 px-3 rounded-xl text-xs font-bold transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 cursor-pointer ${paymentMethod === "WALLET"
                           ? "bg-neutral-800 text-white shadow-md border border-neutral-700"
                           : "text-neutral-400 hover:text-white"
-                      }`}
+                        }`}
                     >
                       <Wallet className="w-3.5 h-3.5" />
                       <span>ShiftDrive Wallet</span>
                       <span
-                        className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono uppercase ${
-                          walletBalance >= estimatedTotal
+                        className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono uppercase ${walletBalance >= estimatedTotal
                             ? "bg-emerald-500/20 text-emerald-300"
                             : "bg-amber-500/20 text-amber-300"
-                        }`}
+                          }`}
                       >
                         {walletBalance >= estimatedTotal ? "Sufficient" : `Short ₹${neededAmount.toLocaleString("en-IN")}`}
                       </span>
@@ -1386,11 +1379,10 @@ function CheckoutContent() {
                     <button
                       type="button"
                       onClick={() => setPaymentMethod("RAZORPAY")}
-                      className={`py-3 px-3 rounded-xl text-xs font-bold transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 cursor-pointer ${
-                        paymentMethod === "RAZORPAY"
+                      className={`py-3 px-3 rounded-xl text-xs font-bold transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 cursor-pointer ${paymentMethod === "RAZORPAY"
                           ? "bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-300 border border-emerald-500/40 shadow-md"
                           : "text-neutral-400 hover:text-white"
-                      }`}
+                        }`}
                     >
                       <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
                       <span>Razorpay Direct</span>
@@ -1535,20 +1527,18 @@ function CheckoutContent() {
                             {/* Option A: Shortfall */}
                             <div
                               onClick={() => setDirectSplitOption("SHORTFALL")}
-                              className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
-                                directSplitOption === "SHORTFALL"
+                              className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${directSplitOption === "SHORTFALL"
                                   ? "bg-emerald-950/30 border-emerald-500/60 shadow-lg shadow-emerald-950/40"
                                   : "bg-neutral-950/60 border-neutral-800 hover:border-neutral-700"
-                              }`}
+                                }`}
                             >
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-white flex items-center gap-2">
                                   <span
-                                    className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                                      directSplitOption === "SHORTFALL"
+                                    className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${directSplitOption === "SHORTFALL"
                                         ? "border-emerald-400 bg-emerald-400"
                                         : "border-neutral-600"
-                                    }`}
+                                      }`}
                                   >
                                     {directSplitOption === "SHORTFALL" && <Check className="w-2.5 h-2.5 text-black" />}
                                   </span>
@@ -1566,20 +1556,18 @@ function CheckoutContent() {
                             {/* Option B: Full Amount */}
                             <div
                               onClick={() => setDirectSplitOption("FULL")}
-                              className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
-                                directSplitOption === "FULL"
+                              className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${directSplitOption === "FULL"
                                   ? "bg-emerald-950/30 border-emerald-500/60 shadow-lg shadow-emerald-950/40"
                                   : "bg-neutral-950/60 border-neutral-800 hover:border-neutral-700"
-                              }`}
+                                }`}
                             >
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-white flex items-center gap-2">
                                   <span
-                                    className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                                      directSplitOption === "FULL"
+                                    className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${directSplitOption === "FULL"
                                         ? "border-emerald-400 bg-emerald-400"
                                         : "border-neutral-600"
-                                    }`}
+                                      }`}
                                   >
                                     {directSplitOption === "FULL" && <Check className="w-2.5 h-2.5 text-black" />}
                                   </span>
